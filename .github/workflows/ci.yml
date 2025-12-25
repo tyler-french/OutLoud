@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.14.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+
+      - name: Build
+        run: bazel build //...
+
+      - name: Test app starts
+        run: |
+          timeout 30 bazel run //:app &
+          APP_PID=$!
+          sleep 15
+          curl -f http://localhost:5001 || exit 1
+          kill $APP_PID 2>/dev/null || true
+
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.14.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}
+          repository-cache: true
+
+      - name: Install system dependencies
+        run: brew install ffmpeg libsndfile
+
+      - name: Build
+        run: bazel build //...
+
+      - name: Test app starts
+        run: |
+          bazel run //:app &
+          APP_PID=$!
+          sleep 15
+          curl -f http://localhost:5001 || exit 1
+          kill $APP_PID 2>/dev/null || true

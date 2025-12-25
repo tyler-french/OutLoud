@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OutLoud</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header>
+        <h1>OutLoud</h1>
+        <div class="controls">
+            <select id="voice">
+                {% for v in voices %}
+                <option value="{{ v.id }}" {% if v.id == 'am_adam' %}selected{% endif %}>
+                    {{ v.name }}
+                </option>
+                {% endfor %}
+            </select>
+            <div class="filter-toggle">
+                <button id="filter-all" class="active">All</button>
+                <button id="filter-done">Done</button>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <div id="drop-zone" class="drop-zone">
+            <div class="drop-content">
+                <p>Drop PDFs here or paste URL</p>
+                <input type="text" id="url-input" placeholder="https://...">
+                <input type="file" id="file-input" accept=".pdf" multiple hidden>
+            </div>
+        </div>
+
+        <div id="items-list" class="items-list">
+            {% for article in articles %}
+            <div class="item {% if article.status == 'completed' %}done{% endif %}" data-id="{{ article.id }}" data-status="{{ article.status }}">
+                <div class="item-info">
+                    <span class="item-title">{{ article.title }}</span>
+                    <span class="item-status">{{ article.status }}</span>
+                </div>
+                <div class="item-controls">
+                    {% if article.mp3_path %}
+                    <button class="play-btn" onclick="playItem({{ article.id }})">Play</button>
+                    {% endif %}
+                    {% if article.status != 'completed' and article.mp3_path %}
+                    <button class="done-btn" onclick="markDone({{ article.id }})">Done</button>
+                    {% endif %}
+                    <button class="delete-btn" onclick="deleteItem({{ article.id }})">X</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div id="player-bar" class="player-bar hidden">
+            <div class="now-playing">
+                <span id="current-title">-</span>
+            </div>
+            <audio id="audio-player" controls></audio>
+            <button id="close-player">X</button>
+        </div>
+    </main>
+
+    <div id="processing-panel" class="processing-panel hidden">
+        <h3>Processing</h3>
+        <div id="processing-list"></div>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

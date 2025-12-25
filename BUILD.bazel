@@ -1,0 +1,66 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@rules_python//python:pip.bzl", "compile_pip_requirements")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["requirements.lock"])
+
+compile_pip_requirements(
+    name = "requirements",
+    src = "requirements.txt",
+    requirements_txt = "requirements.lock",
+)
+
+py_library(
+    name = "lib",
+    srcs = [
+        "cleaner.py",
+        "config.py",
+        "db.py",
+        "extractor.py",
+        "tts.py",
+    ],
+    deps = [
+        "@pypi//flask",
+        "@pypi//kokoro_onnx",
+        "@pypi//marker_pdf",
+        "@pypi//numpy",
+        "@pypi//pdfplumber",
+        "@pypi//pydub",
+        "@pypi//soundfile",
+        "@pypi//trafilatura",
+        "@rules_python//python/runfiles",
+    ],
+)
+
+py_binary(
+    name = "app",
+    srcs = ["app.py"],
+    data = [
+        ":static_files",
+        ":templates",
+        ":model_files",
+    ],
+    deps = [
+        ":lib",
+        "@pypi//flask",
+    ],
+)
+
+filegroup(
+    name = "templates",
+    srcs = glob(["templates/**"]),
+)
+
+filegroup(
+    name = "static_files",
+    srcs = glob(["static/**"]),
+)
+
+filegroup(
+    name = "model_files",
+    srcs = [
+        "@kokoro_model//file",
+        "@kokoro_voices//file",
+    ],
+)

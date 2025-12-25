@@ -1,0 +1,33 @@
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+
+# Model files (download separately - see README)
+*.onnx
+*.bin
+
+# User data
+data/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Claude Code
+.claude/
+
+# Logs
+*.log
+
+# Bazel
+bazel-*

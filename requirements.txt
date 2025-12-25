@@ -1,0 +1,8 @@
+flask==3.1.2
+numpy
+pydub==0.25.1
+soundfile
+trafilatura==2.0.0
+pdfplumber==0.11.8
+kokoro-onnx==0.4.9
+marker-pdf==1.10.1
