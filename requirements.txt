@@ -1,3 +1,5 @@
+--index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://pypi.org/simple
 flask==3.1.2
 numpy
 pydub==0.25.1
