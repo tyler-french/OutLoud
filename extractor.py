@@ -35,7 +35,7 @@ def extract_from_url(url: str) -> tuple[str, str]:
     return title, text
 
 
-def extract_from_pdf(pdf_path: str) -> tuple[str, str]: 
+def extract_from_pdf(pdf_path: str) -> tuple[str, str]:
     path = Path(pdf_path)
     if not path.exists():
         raise FileNotFoundError(f"PDF not found: {pdf_path}")
@@ -49,6 +49,30 @@ def extract_from_pdf(pdf_path: str) -> tuple[str, str]:
         raise ValueError(f"Could not extract text from PDF: {pdf_path}")
 
     text = clean_markdown_for_tts(text)
+    title = extract_title_from_text(text) or path.stem
+    title = re.sub(r'[_-]+', ' ', title).strip()
+
+    return title, text
+
+
+def extract_from_pdf_simple(pdf_path: str, max_pages: int | None = None) -> tuple[str, str]:
+    import pdfplumber
+    path = Path(pdf_path)
+    if not path.exists():
+        raise FileNotFoundError(f"PDF not found: {pdf_path}")
+
+    text_parts = []
+    with pdfplumber.open(path) as pdf:
+        pages = pdf.pages[:max_pages] if max_pages else pdf.pages
+        for page in pages:
+            page_text = page.extract_text()
+            if page_text:
+                text_parts.append(page_text)
+
+    text = "\n\n".join(text_parts)
+    if not text or len(text.strip()) < 50:
+        raise ValueError(f"Could not extract text from PDF: {pdf_path}")
+
     title = extract_title_from_text(text) or path.stem
     title = re.sub(r'[_-]+', ' ', title).strip()
 

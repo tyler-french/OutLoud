@@ -19,6 +19,10 @@ pip.parse(
     experimental_requirement_cycles = {
         "lxml": ["lxml", "lxml-html-clean"],
     },
+    extra_pip_args = [
+        "--index-url=https://download.pytorch.org/whl/cpu",
+        "--extra-index-url=https://pypi.org/simple",
+    ],
 )
 use_repo(pip, "pypi")
 

@@ -1,6 +1,35 @@
+import glob
+import os
 import re
 from pathlib import Path
 from typing import Callable
+
+# Configure espeak-ng data path before importing kokoro
+def _find_espeak_data():
+    # Check common paths for espeak-ng data
+    search_paths = [
+        "/opt/homebrew/share/espeak-ng-data",  # Apple Silicon brew symlink
+        "/usr/local/share/espeak-ng-data",     # Intel brew symlink
+        "/usr/share/espeak-ng-data",           # Linux
+    ]
+    # Also check Homebrew Cellar paths directly
+    cellar_patterns = [
+        "/opt/homebrew/Cellar/espeak-ng/*/share/espeak-ng-data",
+        "/usr/local/Cellar/espeak-ng/*/share/espeak-ng-data",
+    ]
+    for pattern in cellar_patterns:
+        matches = glob.glob(pattern)
+        if matches:
+            search_paths.insert(0, matches[0])
+
+    for data_path in search_paths:
+        if Path(data_path).exists() and (Path(data_path) / "phontab").exists():
+            return data_path
+    return None
+
+_espeak_data = _find_espeak_data()
+if _espeak_data:
+    os.environ["ESPEAK_DATA_PATH"] = _espeak_data
 
 import numpy as np
 import soundfile as sf

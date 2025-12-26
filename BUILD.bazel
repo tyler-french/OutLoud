@@ -1,4 +1,4 @@
-load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
 package(default_visibility = ["//visibility:public"])
@@ -9,6 +9,12 @@ compile_pip_requirements(
     name = "requirements",
     src = "requirements.txt",
     requirements_txt = "requirements.lock",
+    extra_args = [
+        "--index-url=https://download.pytorch.org/whl/cpu",
+        "--extra-index-url=https://pypi.org/simple",
+        "--allow-unsafe",
+        "--resolver=backtracking",
+    ],
 )
 
 py_library(
@@ -62,5 +68,23 @@ filegroup(
     srcs = [
         "@kokoro_model//file",
         "@kokoro_voices//file",
+    ],
+)
+
+py_test(
+    name = "e2e_test",
+    size = "small",
+    srcs = ["e2e_test.py"],
+    data = [
+        "bazel.pdf",
+        ":model_files",
+    ],
+    env = {
+        "ESPEAK_DATA_PATH": "/opt/homebrew/share/espeak-ng-data:/usr/share/espeak-ng-data",
+    },
+    local = True,
+    deps = [
+        ":lib",
+        "@rules_python//python/runfiles",
     ],
 )
