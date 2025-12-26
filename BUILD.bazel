@@ -1,4 +1,4 @@
-load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
 package(default_visibility = ["//visibility:public"])
@@ -9,6 +9,12 @@ compile_pip_requirements(
     name = "requirements",
     src = "requirements.txt",
     requirements_txt = "requirements.lock",
+    extra_args = [
+        "--allow-unsafe",
+        "--resolver=backtracking",
+    ],
+    tags = ["manual"],
+    timeout = "long",
 )
 
 py_library(
@@ -47,6 +53,25 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "cli",
+    srcs = ["cli.py"],
+    data = [
+        ":model_files",
+    ],
+    deps = [
+        ":lib",
+    ],
+)
+
+alias(
+    name = "ruff",
+    actual = select({
+        "@platforms//os:linux": "@ruff_linux_x86_64//:ruff",
+        "@platforms//os:macos": "@ruff_macos_aarch64//:ruff",
+    }),
+)
+
 filegroup(
     name = "templates",
     srcs = glob(["templates/**"]),
@@ -62,5 +87,29 @@ filegroup(
     srcs = [
         "@kokoro_model//file",
         "@kokoro_voices//file",
+    ],
+)
+
+py_test(
+    name = "e2e_test",
+    size = "medium",
+    srcs = ["e2e_test.py"],
+    data = [
+        "bazel.pdf",
+        ":model_files",
+    ],
+    env = select({
+        "@platforms//os:macos": {
+            "ESPEAK_DATA_PATH": "/opt/homebrew/share/espeak-ng-data:/usr/share/espeak-ng-data",
+        },
+        "@platforms//os:linux": {
+            "ESPEAK_DATA_PATH": "/usr/share/espeak-ng-data:/usr/lib/x86_64-linux-gnu/espeak-ng-data",
+        },
+        "//conditions:default": {},
+    }),
+    local = True,
+    deps = [
+        ":lib",
+        "@rules_python//python/runfiles",
     ],
 )

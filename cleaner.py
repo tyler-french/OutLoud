@@ -1,5 +1,4 @@
 import requests
-from typing import Generator
 
 OLLAMA_URL = "http://localhost:11434"
 DEFAULT_MODEL = "llama3.2:1b"
@@ -36,7 +35,7 @@ def is_ollama_running() -> bool:
     try:
         response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=2)
         return response.status_code == 200
-    except:
+    except Exception:
         return False
 
 
@@ -63,9 +62,9 @@ def cleanup_text(text: str, model: str = DEFAULT_MODEL) -> str:
             "options": {
                 "temperature": 0.1,  # Low temperature for consistent output
                 "num_predict": len(text) + 500,  # Allow enough tokens
-            }
+            },
         },
-        timeout=300  # 5 minute timeout for long texts
+        timeout=300,  # 5 minute timeout for long texts
     )
 
     if response.status_code != 200:
@@ -79,7 +78,7 @@ def cleanup_text_chunked(
     text: str,
     model: str = DEFAULT_MODEL,
     chunk_size: int = 2000,
-    progress_callback=None
+    progress_callback=None,
 ) -> str:
     """
     Clean up text in chunks for longer documents.
@@ -97,7 +96,7 @@ def cleanup_text_chunked(
         raise RuntimeError("Ollama is not running. Start it with: ollama serve")
 
     # Split into paragraphs
-    paragraphs = text.split('\n\n')
+    paragraphs = text.split("\n\n")
 
     # Group paragraphs into chunks
     chunks = []

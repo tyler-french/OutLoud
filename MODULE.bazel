@@ -3,6 +3,7 @@ module(
     version = "0.1.0",
 )
 
+bazel_dep(name = "platforms", version = "0.0.11")
 bazel_dep(name = "rules_python", version = "1.6.3")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
@@ -36,4 +37,22 @@ http_file(
     url = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin",
     sha256 = "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d",
     downloaded_file_path = "voices-v1.0.bin",
+)
+
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "ruff_linux_x86_64",
+    url = "https://github.com/astral-sh/ruff/releases/download/0.8.6/ruff-x86_64-unknown-linux-gnu.tar.gz",
+    sha256 = "1baca186d3525656c4e8e387bff990fc25af63642e22a0af04f45288b9d566e7",
+    strip_prefix = "ruff-x86_64-unknown-linux-gnu",
+    build_file_content = 'exports_files(["ruff"])',
+)
+
+http_archive(
+    name = "ruff_macos_aarch64",
+    url = "https://github.com/astral-sh/ruff/releases/download/0.8.6/ruff-aarch64-apple-darwin.tar.gz",
+    sha256 = "d24cfe247de2bfd90d7f0604196247b680e1db5b6c8427cf6e540c38044526f7",
+    strip_prefix = "ruff-aarch64-apple-darwin",
+    build_file_content = 'exports_files(["ruff"])',
 )

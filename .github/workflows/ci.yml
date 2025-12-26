@@ -7,8 +7,27 @@ on:
     branches: [main]
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bazel
+        uses: bazel-contrib/setup-bazel@0.14.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-lint
+          repository-cache: true
+
+      - name: Lint
+        run: bazel run //:ruff -- check .
+
+      - name: Format check
+        run: bazel run //:ruff -- format --check .
+
   build:
     runs-on: ubuntu-latest
+    needs: lint
 
     steps:
       - uses: actions/checkout@v4
@@ -23,10 +42,10 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg libsndfile1
+          sudo apt-get install -y ffmpeg libsndfile1 espeak-ng
 
       - name: Build
-        run: bazel build //...
+        run: bazel test //...
 
       - name: Test app starts
         run: |
