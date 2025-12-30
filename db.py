@@ -30,12 +30,14 @@ def init_db():
     conn.close()
 
 
-def create_article(title: str, source_type: str, source_path: str, txt_path: str) -> int:
+def create_article(
+    title: str, source_type: str, source_path: str, txt_path: str
+) -> int:
     conn = get_connection()
     cursor = conn.execute(
         """INSERT INTO articles (title, source_type, source_path, txt_path)
            VALUES (?, ?, ?, ?)""",
-        (title, source_type, source_path, txt_path)
+        (title, source_type, source_path, txt_path),
     )
     article_id = cursor.lastrowid
     conn.commit()
@@ -45,18 +47,14 @@ def create_article(title: str, source_type: str, source_path: str, txt_path: str
 
 def get_article(article_id: int) -> dict | None:
     conn = get_connection()
-    row = conn.execute(
-        "SELECT * FROM articles WHERE id = ?", (article_id,)
-    ).fetchone()
+    row = conn.execute("SELECT * FROM articles WHERE id = ?", (article_id,)).fetchone()
     conn.close()
     return dict(row) if row else None
 
 
 def get_all_articles() -> list[dict]:
     conn = get_connection()
-    rows = conn.execute(
-        "SELECT * FROM articles ORDER BY created_at DESC"
-    ).fetchall()
+    rows = conn.execute("SELECT * FROM articles ORDER BY created_at DESC").fetchall()
     conn.close()
     return [dict(row) for row in rows]
 
@@ -83,7 +81,7 @@ def update_article_mp3(article_id: int, mp3_path: str):
     conn = get_connection()
     conn.execute(
         "UPDATE articles SET mp3_path = ?, status = 'ready' WHERE id = ?",
-        (mp3_path, article_id)
+        (mp3_path, article_id),
     )
     conn.commit()
     conn.close()
@@ -91,10 +89,7 @@ def update_article_mp3(article_id: int, mp3_path: str):
 
 def update_article_notes(article_id: int, notes: str):
     conn = get_connection()
-    conn.execute(
-        "UPDATE articles SET notes = ? WHERE id = ?",
-        (notes, article_id)
-    )
+    conn.execute("UPDATE articles SET notes = ? WHERE id = ?", (notes, article_id))
     conn.commit()
     conn.close()
 
@@ -103,7 +98,7 @@ def mark_article_completed(article_id: int):
     conn = get_connection()
     conn.execute(
         "UPDATE articles SET status = 'completed', completed_at = ? WHERE id = ?",
-        (datetime.now().isoformat(), article_id)
+        (datetime.now().isoformat(), article_id),
     )
     conn.commit()
     conn.close()

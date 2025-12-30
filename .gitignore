@@ -31,3 +31,4 @@ data/
 
 # Bazel
 bazel-*
+user.bazelrc

@@ -1,16 +1,46 @@
+import glob
+import os
 import re
 from pathlib import Path
 from typing import Callable
 
-import numpy as np
-import soundfile as sf
-from kokoro_onnx import Kokoro
-from pydub import AudioSegment
+
+def _find_espeak_data():
+    search_paths = [
+        "/opt/homebrew/share/espeak-ng-data",
+        "/usr/local/share/espeak-ng-data",
+        "/usr/share/espeak-ng-data",
+        "/usr/lib/x86_64-linux-gnu/espeak-ng-data",
+    ]
+    cellar_patterns = [
+        "/opt/homebrew/Cellar/espeak-ng/*/share/espeak-ng-data",
+        "/usr/local/Cellar/espeak-ng/*/share/espeak-ng-data",
+    ]
+    for pattern in cellar_patterns:
+        matches = glob.glob(pattern)
+        if matches:
+            search_paths.insert(0, matches[0])
+
+    for data_path in search_paths:
+        if Path(data_path).exists() and (Path(data_path) / "phontab").exists():
+            return data_path
+    return None
+
+
+_espeak_data = _find_espeak_data()
+if _espeak_data:
+    os.environ["ESPEAK_DATA_PATH"] = _espeak_data
+
+import numpy as np  # noqa: E402
+import soundfile as sf  # noqa: E402
+from kokoro_onnx import Kokoro  # noqa: E402
+from pydub import AudioSegment  # noqa: E402
 
 
 def _find_model_paths() -> tuple[Path, Path]:
     try:
         from python.runfiles import runfiles
+
         r = runfiles.Create()
         if r:
             model_path = r.Rlocation("+_repo_rules+kokoro_model/file/kokoro-v1.0.onnx")
@@ -36,7 +66,7 @@ def get_kokoro() -> Kokoro:
 
 
 def split_into_chunks(text: str, max_chars: int = 1000) -> list[str]:
-    abbreviations = r'(?<!\bMr)(?<!\bMrs)(?<!\bDr)(?<!\bMs)(?<!\bProf)(?<!\bSr)(?<!\bJr)(?<!\bvs)(?<!\betc)(?<!\be\.g)(?<!\bi\.e)(?<!\bNo)(?<!\bSt)'
+    abbreviations = r"(?<!\bMr)(?<!\bMrs)(?<!\bDr)(?<!\bMs)(?<!\bProf)(?<!\bSr)(?<!\bJr)(?<!\bvs)(?<!\betc)(?<!\be\.g)(?<!\bi\.e)(?<!\bNo)(?<!\bSt)"
     pattern = abbreviations + r'(?<=[.!?])\s+(?=[A-Z"\']|$)'
     sentences = [s.strip() for s in re.split(pattern, text) if s.strip()]
 
@@ -50,13 +80,13 @@ def split_into_chunks(text: str, max_chars: int = 1000) -> list[str]:
             if current_chunk:
                 chunks.append(current_chunk.strip())
             if len(sentence) > max_chars:
-                paragraphs = sentence.split('\n\n')
+                paragraphs = sentence.split("\n\n")
                 for para in paragraphs:
                     if len(para) <= max_chars:
                         chunks.append(para.strip())
                     else:
                         for i in range(0, len(para), max_chars):
-                            chunks.append(para[i:i+max_chars].strip())
+                            chunks.append(para[i : i + max_chars].strip())
                 current_chunk = ""
             else:
                 current_chunk = sentence + " "
@@ -72,7 +102,7 @@ def generate_audio_chunked(
     output_path: str,
     voice: str = "am_adam",
     speed: float = 1.0,
-    progress_callback: Callable[[int, int, str], None] | None = None
+    progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> str:
     kokoro = get_kokoro()
     output_path = Path(output_path)
@@ -85,7 +115,9 @@ def generate_audio_chunked(
 
     for i, chunk in enumerate(chunks):
         if progress_callback:
-            progress_callback(i + 1, total_chunks, f"Processing chunk {i + 1}/{total_chunks}")
+            progress_callback(
+                i + 1, total_chunks, f"Processing chunk {i + 1}/{total_chunks}"
+            )
         samples, sample_rate = kokoro.create(chunk, voice=voice, speed=speed)
         all_samples.append(samples)
 
@@ -93,7 +125,7 @@ def generate_audio_chunked(
         progress_callback(total_chunks, total_chunks, "Combining audio...")
 
     combined = np.concatenate(all_samples)
-    wav_path = output_path.with_suffix('.wav')
+    wav_path = output_path.with_suffix(".wav")
     sf.write(str(wav_path), combined, sample_rate)
 
     if progress_callback:
@@ -109,21 +141,68 @@ def generate_audio_chunked(
     return str(output_path)
 
 
-def generate_audio(text: str, output_path: str, voice: str = "am_adam", speed: float = 1.0) -> str:
+def generate_audio(
+    text: str, output_path: str, voice: str = "am_adam", speed: float = 1.0
+) -> str:
     return generate_audio_chunked(text, output_path, voice, speed)
 
 
 def get_available_voices() -> list[dict]:
     return [
         {"id": "am_adam", "name": "Adam", "lang": "American English", "gender": "Male"},
-        {"id": "am_michael", "name": "Michael", "lang": "American English", "gender": "Male"},
-        {"id": "af_heart", "name": "Heart", "lang": "American English", "gender": "Female"},
-        {"id": "af_bella", "name": "Bella", "lang": "American English", "gender": "Female"},
-        {"id": "af_nicole", "name": "Nicole", "lang": "American English", "gender": "Female"},
-        {"id": "af_sarah", "name": "Sarah", "lang": "American English", "gender": "Female"},
+        {
+            "id": "am_michael",
+            "name": "Michael",
+            "lang": "American English",
+            "gender": "Male",
+        },
+        {
+            "id": "af_heart",
+            "name": "Heart",
+            "lang": "American English",
+            "gender": "Female",
+        },
+        {
+            "id": "af_bella",
+            "name": "Bella",
+            "lang": "American English",
+            "gender": "Female",
+        },
+        {
+            "id": "af_nicole",
+            "name": "Nicole",
+            "lang": "American English",
+            "gender": "Female",
+        },
+        {
+            "id": "af_sarah",
+            "name": "Sarah",
+            "lang": "American English",
+            "gender": "Female",
+        },
         {"id": "af_sky", "name": "Sky", "lang": "American English", "gender": "Female"},
-        {"id": "bf_emma", "name": "Emma", "lang": "British English", "gender": "Female"},
-        {"id": "bf_isabella", "name": "Isabella", "lang": "British English", "gender": "Female"},
-        {"id": "bm_george", "name": "George", "lang": "British English", "gender": "Male"},
-        {"id": "bm_lewis", "name": "Lewis", "lang": "British English", "gender": "Male"},
+        {
+            "id": "bf_emma",
+            "name": "Emma",
+            "lang": "British English",
+            "gender": "Female",
+        },
+        {
+            "id": "bf_isabella",
+            "name": "Isabella",
+            "lang": "British English",
+            "gender": "Female",
+        },
+        {
+            "id": "bm_george",
+            "name": "George",
+            "lang": "British English",
+            "gender": "Male",
+        },
+        {
+            "id": "bm_lewis",
+            "name": "Lewis",
+            "lang": "British English",
+            "gender": "Male",
+        },
     ]
