@@ -1,4 +1,3 @@
-// DOM Elements
 const dropZone = document.getElementById('drop-zone');
 const urlInput = document.getElementById('url-input');
 const fileInput = document.getElementById('file-input');
@@ -12,18 +11,17 @@ const currentTitle = document.getElementById('current-title');
 const closePlayer = document.getElementById('close-player');
 const processingPanel = document.getElementById('processing-panel');
 const processingList = document.getElementById('processing-list');
+const previewBtn = document.getElementById('preview-voice');
 
-// Processing queue
 const processingItems = new Map();
+let previewAudio = null;
 
-// Drop zone - click to select files
 dropZone.addEventListener('click', (e) => {
     if (e.target !== urlInput) {
         fileInput.click();
     }
 });
 
-// Drag and drop
 dropZone.addEventListener('dragover', (e) => {
     e.preventDefault();
     dropZone.classList.add('drag-over');
@@ -41,13 +39,11 @@ dropZone.addEventListener('drop', (e) => {
     files.forEach(file => processFile(file));
 });
 
-// File input change
 fileInput.addEventListener('change', (e) => {
     Array.from(e.target.files).forEach(file => processFile(file));
     fileInput.value = '';
 });
 
-// URL input - Enter to submit
 urlInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
         const url = urlInput.value.trim();
@@ -58,12 +54,10 @@ urlInput.addEventListener('keypress', (e) => {
     }
 });
 
-// Prevent URL input click from triggering file picker
 urlInput.addEventListener('click', (e) => {
     e.stopPropagation();
 });
 
-// Process a PDF file
 async function processFile(file) {
     const tempId = 'temp-' + Date.now() + Math.random().toString(36).substr(2, 9);
     addProcessingItem(tempId, file.name);
@@ -81,7 +75,6 @@ async function processFile(file) {
 
         if (data.error) throw new Error(data.error);
 
-        // Start listening for progress
         listenToProgress(data.task_id, tempId, file.name);
 
     } catch (error) {
@@ -90,7 +83,6 @@ async function processFile(file) {
     }
 }
 
-// Process a URL
 async function processUrl(url) {
     const tempId = 'temp-' + Date.now();
     const displayName = new URL(url).hostname;
@@ -114,7 +106,6 @@ async function processUrl(url) {
     }
 }
 
-// Listen to SSE progress
 function listenToProgress(taskId, tempId, name) {
     const eventSource = new EventSource(`/process/progress/${taskId}`);
 
@@ -135,7 +126,6 @@ function listenToProgress(taskId, tempId, name) {
             return;
         }
 
-        // Update progress
         const percent = data.percent || 0;
         const status = data.status || 'Processing...';
         updateProcessingItem(tempId, status, percent);
@@ -148,7 +138,6 @@ function listenToProgress(taskId, tempId, name) {
     };
 }
 
-// Processing panel management
 function addProcessingItem(id, name) {
     processingItems.set(id, { name, status: 'Starting...', percent: 0 });
     updateProcessingPanel();
@@ -190,7 +179,6 @@ function updateProcessingPanel() {
     });
 }
 
-// Add completed item to list
 function addItemToList(article) {
     const existing = itemsList.querySelector(`[data-id="${article.id}"]`);
     if (existing) {
@@ -215,7 +203,6 @@ function addItemToList(article) {
     itemsList.insertBefore(div, itemsList.firstChild);
 }
 
-// Play item
 async function playItem(id) {
     const response = await fetch(`/article/${id}`);
     const article = await response.json();
@@ -226,7 +213,6 @@ async function playItem(id) {
     audioPlayer.play();
 }
 
-// Mark as done
 async function markDone(id) {
     await fetch(`/complete/${id}`, { method: 'PUT' });
 
@@ -240,7 +226,6 @@ async function markDone(id) {
     }
 }
 
-// Delete item
 async function deleteItem(id) {
     if (!confirm('Delete this item?')) return;
 
@@ -250,7 +235,6 @@ async function deleteItem(id) {
     if (item) item.remove();
 }
 
-// Filter toggle
 filterAll.addEventListener('click', () => {
     filterAll.classList.add('active');
     filterDone.classList.remove('active');
@@ -263,8 +247,47 @@ filterDone.addEventListener('click', () => {
     itemsList.classList.add('filter-done');
 });
 
-// Close player
 closePlayer.addEventListener('click', () => {
     audioPlayer.pause();
     playerBar.classList.add('hidden');
+});
+
+previewBtn.addEventListener('click', () => {
+    const voice = voiceSelect.value;
+
+    if (previewAudio) {
+        previewAudio.pause();
+        previewAudio = null;
+    }
+
+    previewBtn.disabled = true;
+    previewBtn.textContent = '...';
+
+    const audio = new Audio(`/preview/voice/${voice}`);
+    previewAudio = audio;
+
+    audio.oncanplaythrough = () => {
+        if (previewAudio !== audio) {
+            return;
+        }
+        previewBtn.disabled = false;
+        previewBtn.textContent = '\u25B6';
+        audio.play();
+    };
+
+    audio.onended = () => {
+        if (previewAudio !== audio) {
+            return;
+        }
+        previewBtn.textContent = '\u25B6';
+    };
+
+    audio.onerror = () => {
+        if (previewAudio !== audio) {
+            return;
+        }
+        previewBtn.disabled = false;
+        previewBtn.textContent = '\u25B6';
+        console.error('Preview failed to load');
+    };
 });

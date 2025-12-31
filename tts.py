@@ -1,54 +1,51 @@
 import glob
+import io
 import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Callable
 
-
-def _find_espeak_data():
-    search_paths = [
+for _pattern in [
+    "/opt/homebrew/Cellar/espeak-ng/*/share/espeak-ng-data",
+    "/usr/local/Cellar/espeak-ng/*/share/espeak-ng-data",
+]:
+    _matches = glob.glob(_pattern)
+    if _matches and Path(_matches[0] + "/phontab").exists():
+        os.environ["ESPEAK_DATA_PATH"] = _matches[0]
+        break
+else:
+    for _path in [
         "/opt/homebrew/share/espeak-ng-data",
         "/usr/local/share/espeak-ng-data",
         "/usr/share/espeak-ng-data",
         "/usr/lib/x86_64-linux-gnu/espeak-ng-data",
-    ]
-    cellar_patterns = [
-        "/opt/homebrew/Cellar/espeak-ng/*/share/espeak-ng-data",
-        "/usr/local/Cellar/espeak-ng/*/share/espeak-ng-data",
-    ]
-    for pattern in cellar_patterns:
-        matches = glob.glob(pattern)
-        if matches:
-            search_paths.insert(0, matches[0])
-
-    for data_path in search_paths:
-        if Path(data_path).exists() and (Path(data_path) / "phontab").exists():
-            return data_path
-    return None
-
-
-_espeak_data = _find_espeak_data()
-if _espeak_data:
-    os.environ["ESPEAK_DATA_PATH"] = _espeak_data
+    ]:
+        if Path(_path + "/phontab").exists():
+            os.environ["ESPEAK_DATA_PATH"] = _path
+            break
 
 import numpy as np  # noqa: E402
 import soundfile as sf  # noqa: E402
 from kokoro_onnx import Kokoro  # noqa: E402
 from pydub import AudioSegment  # noqa: E402
 
+try:
+    from python.runfiles import runfiles
+except ImportError:
+    runfiles = None
+
+_BITRATE = "192k"
+
 
 def _find_model_paths() -> tuple[Path, Path]:
-    try:
-        from python.runfiles import runfiles
-
+    if runfiles:
         r = runfiles.Create()
         if r:
             model_path = r.Rlocation("+_repo_rules+kokoro_model/file/kokoro-v1.0.onnx")
             voices_path = r.Rlocation("+_repo_rules+kokoro_voices/file/voices-v1.0.bin")
             if model_path and voices_path:
                 return Path(model_path), Path(voices_path)
-    except ImportError:
-        pass
 
     base_dir = Path(__file__).parent
     return base_dir / "kokoro-v1.0.onnx", base_dir / "voices-v1.0.bin"
@@ -132,7 +129,7 @@ def generate_audio_chunked(
         progress_callback(total_chunks, total_chunks, "Converting to MP3...")
 
     audio = AudioSegment.from_wav(str(wav_path))
-    audio.export(str(output_path), format="mp3", bitrate="192k")
+    audio.export(str(output_path), format="mp3", bitrate=_BITRATE)
     wav_path.unlink()
 
     if progress_callback:
@@ -145,6 +142,33 @@ def generate_audio(
     text: str, output_path: str, voice: str = "am_adam", speed: float = 1.0
 ) -> str:
     return generate_audio_chunked(text, output_path, voice, speed)
+
+
+def generate_preview(voice: str, speed: float = 1.0) -> bytes:
+    """Generate a short voice preview and return MP3 bytes."""
+    kokoro = get_kokoro()
+
+    voices = {v["id"]: v for v in get_available_voices()}
+    if voice not in voices:
+        raise ValueError(f"Invalid voice ID: {voice}")
+    voice_info = voices[voice]
+    preview_text = f"Hi, I'm {voice_info['name']}. I'll be reading your articles."
+
+    samples, sample_rate = kokoro.create(preview_text, voice=voice, speed=speed)
+
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as wav_file:
+        wav_path = wav_file.name
+
+    try:
+        sf.write(wav_path, samples, sample_rate)
+        audio = AudioSegment.from_wav(wav_path)
+    finally:
+        Path(wav_path).unlink(missing_ok=True)
+
+    mp3_buffer = io.BytesIO()
+    audio.export(mp3_buffer, format="mp3", bitrate=_BITRATE)
+    mp3_buffer.seek(0)
+    return mp3_buffer.read()
 
 
 def get_available_voices() -> list[dict]:

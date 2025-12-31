@@ -93,10 +93,14 @@ filegroup(
 py_test(
     name = "e2e_test",
     size = "medium",
-    srcs = ["e2e_test.py"],
+    srcs = ["e2e_test.py", "app.py"],
+    main = "e2e_test.py",
+    args = ["-v"],
     data = [
         "bazel.pdf",
         ":model_files",
+        ":static_files",
+        ":templates",
     ],
     env = select({
         "@platforms//os:macos": {
@@ -110,6 +114,8 @@ py_test(
     local = True,
     deps = [
         ":lib",
+        "@pypi//flask",
+        "@pypi//pytest",
         "@rules_python//python/runfiles",
     ],
 )

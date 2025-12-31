@@ -251,6 +251,24 @@ def article_endpoint(article_id):
     return jsonify(article)
 
 
+@app.route("/preview/voice/<voice_id>")
+def preview_voice(voice_id):
+    """Generate a short voice preview."""
+    voices = {v["id"]: v for v in tts.get_available_voices()}
+    if voice_id not in voices:
+        return jsonify({"error": "Voice not found"}), 404
+
+    try:
+        mp3_bytes = tts.generate_preview(voice_id)
+        return Response(
+            mp3_bytes,
+            mimetype="audio/mpeg",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/audio/<int:article_id>")
 def serve_audio(article_id):
     article = db.get_article(article_id)
