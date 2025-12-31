@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
+import pdfplumber
 import trafilatura
 
 _marker_converter = None
@@ -59,8 +60,6 @@ def extract_from_pdf(pdf_path: str) -> tuple[str, str]:
 def extract_from_pdf_simple(
     pdf_path: str, max_pages: int | None = None
 ) -> tuple[str, str]:
-    import pdfplumber
-
     path = Path(pdf_path)
     if not path.exists():
         raise FileNotFoundError(f"PDF not found: {pdf_path}")

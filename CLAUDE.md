@@ -1,43 +1,23 @@
 # OutLoud
 
-Web-based text-to-speech that converts articles and PDFs to audio using Kokoro TTS.
+Text-to-speech web app using Kokoro TTS.
 
-## Run
-
-```bash
-bazel run //:app    # http://localhost:5001
-```
-
-## System Dependencies
-
-**macOS:** `brew install ffmpeg libsndfile`
-**Linux:** `apt install ffmpeg libsndfile1`
-
-## Architecture
-
-```
-app.py        - Flask routes, SSE streaming
-├── extractor.py  - URL/PDF text extraction
-├── cleaner.py    - LLM text cleanup (Ollama)
-├── tts.py        - Kokoro-ONNX audio generation
-├── db.py         - SQLite operations
-└── config.py     - Path configuration
-```
-
-## Data Storage
-
-User data stored in `~/.outloud/`:
-- `reader.db` - SQLite database
-- `texts/` - Extracted text files
-- `audio/` - Generated MP3 files
-- `uploads/` - Uploaded PDFs
-
-Override with `OUTLOUD_DATA_DIR` env var.
-
-## Bazel Commands
+## Commands
 
 ```bash
-bazel build //...              # Build all
-bazel run //:app               # Run app
+bazel run //:app                  # Run server (localhost:5001)
+bazel test //:e2e_test            # Run tests
 bazel run //:requirements.update  # Update lock file
+bazel run //:ruff -- check .      # Lint
+bazel run //:ruff -- format .     # Format
 ```
+
+## Dependencies
+
+- macOS: `brew install ffmpeg libsndfile`
+- Linux: `apt install ffmpeg libsndfile1`
+
+## Style
+
+- No comments unless logic is non-obvious
+- All imports at top of file (except heavy deps that should be lazy-loaded)

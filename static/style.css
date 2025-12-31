@@ -39,6 +39,26 @@ header h1 {
     color: #eee;
 }
 
+#preview-voice {
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    border: 1px solid #0f3460;
+    background: #1a1a2e;
+    color: #e94560;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+#preview-voice:hover {
+    background: #e94560;
+    color: white;
+}
+
+#preview-voice:disabled {
+    opacity: 0.5;
+    cursor: wait;
+}
+
 .filter-toggle {
     display: flex;
     gap: 0;
