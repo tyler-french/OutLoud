@@ -1,29 +1,22 @@
 import os
-import sys
 import tempfile
 from pathlib import Path
 
-import pytest
-from python.runfiles import runfiles
+# Must set before importing app/config to avoid permission errors in sandbox
+_test_data_dir = tempfile.mkdtemp(prefix="outloud_test_")
+os.environ["OUTLOUD_DATA_DIR"] = _test_data_dir
 
-from app import app
-from extractor import extract_from_pdf_simple
-from tts import (
+import pytest  # noqa: E402
+
+from app import app  # noqa: E402
+from tts import (  # noqa: E402
     generate_audio,
     generate_audio_chunked,
     generate_preview,
     get_available_voices,
     get_kokoro,
+    split_into_chunks,
 )
-
-
-@pytest.fixture(scope="module")
-def test_pdf() -> str:
-    r = runfiles.Create()
-    pdf_path = r.Rlocation("outloud/bazel.pdf")
-    if not pdf_path or not Path(pdf_path).exists():
-        raise FileNotFoundError("bazel.pdf not found in runfiles")
-    return pdf_path
 
 
 @pytest.fixture(scope="module")
@@ -31,15 +24,19 @@ def kokoro():
     return get_kokoro()
 
 
-class TestPDFExtraction:
-    def test_extract_from_pdf(self, test_pdf):
-        title, text = extract_from_pdf_simple(test_pdf, max_pages=1)
+class TestChunking:
+    def test_split_into_chunks_short_text(self):
+        text = "Hello world. This is a test."
+        chunks = split_into_chunks(text)
+        assert len(chunks) == 1
+        assert chunks[0] == text
 
-        assert title, "Title should not be empty"
-        assert len(text) > 100, "Extracted text should have substantial content"
-        assert (
-            "bazel" in text.lower() or "build" in text.lower()
-        ), "Text should contain relevant content"
+    def test_split_into_chunks_long_text(self):
+        text = "This is sentence one. " * 50
+        chunks = split_into_chunks(text, max_chars=100)
+        assert len(chunks) > 1
+        for chunk in chunks:
+            assert len(chunk) <= 100 or " " not in chunk
 
 
 class TestTTS:
@@ -66,9 +63,13 @@ class TestTTS:
             assert Path(result).exists(), "Output file should exist"
             assert Path(result).stat().st_size > 1000, "Output file should have content"
 
-    def test_generate_audio_chunked(self, kokoro, test_pdf):
-        _, text = extract_from_pdf_simple(test_pdf, max_pages=1)
-        short_text = text[:500]
+    def test_generate_audio_chunked(self, kokoro):
+        sample_text = """
+        This is a longer piece of text that will be chunked for audio generation.
+        It contains multiple sentences to test the chunking functionality.
+        The audio should be generated successfully from this sample content.
+        We want to make sure the progress callback works correctly too.
+        """
 
         progress_calls = []
 
@@ -81,7 +82,7 @@ class TestTTS:
             output_path = os.path.join(tmpdir, "chunked_test.mp3")
 
             result = generate_audio_chunked(
-                short_text,
+                sample_text,
                 output_path,
                 voice=voice,
                 speed=1.2,
@@ -89,9 +90,7 @@ class TestTTS:
             )
 
             assert Path(result).exists(), "Should generate audio file"
-            assert (
-                Path(result).stat().st_size > 5000
-            ), "Audio file should have substantial content"
+            assert Path(result).stat().st_size > 5000, "Audio file should have content"
             assert len(progress_calls) > 0, "Progress callback should be called"
 
     def test_generate_preview(self, kokoro):
@@ -129,4 +128,6 @@ class TestPreviewEndpoint:
 
 
 if __name__ == "__main__":
+    import sys
+
     sys.exit(pytest.main([__file__, "-v"]))

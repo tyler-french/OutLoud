@@ -10,15 +10,28 @@ const audioPlayer = document.getElementById('audio-player');
 const currentTitle = document.getElementById('current-title');
 const closePlayer = document.getElementById('close-player');
 const previewBtn = document.getElementById('preview-voice');
+const textInputBtn = document.getElementById('text-input-btn');
+const textModal = document.getElementById('text-modal');
+const textTitle = document.getElementById('text-title');
+const textInput = document.getElementById('text-input');
+const textCancel = document.getElementById('text-cancel');
+const textSubmit = document.getElementById('text-submit');
 
 let previewAudio = null;
 
-// Polling interval for status updates
-let pollInterval = null;
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 
-// Start polling if there are items being processed
+let pollInterval = null;
+let pollFailures = 0;
+const MAX_POLL_FAILURES = 5;
+
 function startPolling() {
     if (pollInterval) return;
+    pollFailures = 0;
     pollInterval = setInterval(pollStatus, 2000);
 }
 
@@ -27,9 +40,9 @@ function stopPolling() {
         clearInterval(pollInterval);
         pollInterval = null;
     }
+    pollFailures = 0;
 }
 
-// Check if any items need polling
 function hasProcessingItems() {
     const items = itemsList.querySelectorAll('.item');
     for (const item of items) {
@@ -41,61 +54,65 @@ function hasProcessingItems() {
     return false;
 }
 
-// Poll for status updates
 async function pollStatus() {
     try {
         const response = await fetch('/articles/status');
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
         const articles = await response.json();
+        pollFailures = 0;
 
         for (const article of articles) {
             updateItemInList(article);
         }
 
-        // Stop polling if nothing is processing
         if (!hasProcessingItems()) {
             stopPolling();
         }
     } catch (error) {
-        console.error('Polling error:', error);
+        pollFailures++;
+        console.error(`Polling error (${pollFailures}/${MAX_POLL_FAILURES}):`, error);
+        if (pollFailures >= MAX_POLL_FAILURES) {
+            stopPolling();
+            alert('Connection lost. Refresh the page to resume.');
+        }
     }
 }
 
-// Update an item in the list
 function updateItemInList(article) {
     const item = itemsList.querySelector(`[data-id="${article.id}"]`);
     if (!item) {
-        // New item, add it
         addItemToList(article);
         return;
     }
 
     const currentStage = item.dataset.stage;
     if (currentStage === article.processing_stage) {
-        return; // No change
+        return;
     }
 
-    // Update the item
     item.dataset.stage = article.processing_stage || 'ready';
     item.dataset.status = article.status;
 
-    // Update classes
     item.classList.toggle('done', article.status === 'completed');
     item.classList.toggle('error', article.processing_stage === 'error');
 
-    // Update stage display
     const stageEl = item.querySelector('.item-stage');
     if (stageEl) {
-        stageEl.textContent = article.processing_stage || 'ready';
+        let stageText = article.processing_stage || 'ready';
+        if (article.progress && article.processing_stage === 'generating') {
+            stageText = `generating (${article.progress})`;
+        }
+        stageEl.textContent = stageText;
         stageEl.className = `item-stage stage-${article.processing_stage || 'ready'}`;
     }
 
-    // Update title if changed
     const titleEl = item.querySelector('.item-title');
     if (titleEl && titleEl.textContent !== article.title) {
         titleEl.textContent = article.title;
     }
 
-    // Update error display
     let errorEl = item.querySelector('.item-error');
     if (article.error) {
         if (!errorEl) {
@@ -109,7 +126,6 @@ function updateItemInList(article) {
         errorEl.remove();
     }
 
-    // Update controls
     updateItemControls(item, article);
 }
 
@@ -117,7 +133,6 @@ function updateItemControls(item, article) {
     const controls = item.querySelector('.item-controls');
     const stage = article.processing_stage || 'ready';
 
-    // Clear existing buttons
     controls.innerHTML = '';
 
     if (stage === 'ready' && article.mp3_path) {
@@ -142,6 +157,24 @@ function updateItemControls(item, article) {
         retryBtn.textContent = 'Retry';
         retryBtn.onclick = () => retryItem(article.id);
         controls.appendChild(retryBtn);
+    }
+
+    if (stage === 'ready' && !article.was_cleaned) {
+        const cleanBtn = document.createElement('button');
+        cleanBtn.className = 'clean-btn';
+        cleanBtn.textContent = 'Clean';
+        cleanBtn.title = 'Re-process with LLM text cleanup';
+        cleanBtn.onclick = () => cleanItem(article.id);
+        controls.appendChild(cleanBtn);
+    }
+
+    if ((stage === 'ready' || stage === 'completed') && article.cleaned_txt_path) {
+        const regenBtn = document.createElement('button');
+        regenBtn.className = 'regen-btn';
+        regenBtn.textContent = 'Regen';
+        regenBtn.title = 'Regenerate audio with selected voice';
+        regenBtn.onclick = () => regenItem(article.id);
+        controls.appendChild(regenBtn);
     }
 
     const newDeleteBtn = document.createElement('button');
@@ -176,7 +209,6 @@ dropZone.addEventListener('drop', (e) => {
     }
 });
 
-// File input change - batch upload
 fileInput.addEventListener('change', (e) => {
     const files = Array.from(e.target.files);
     if (files.length > 0) {
@@ -199,7 +231,6 @@ urlInput.addEventListener('click', (e) => {
     e.stopPropagation();
 });
 
-// Batch upload PDFs
 async function uploadFiles(files) {
     try {
         const formData = new FormData();
@@ -219,7 +250,6 @@ async function uploadFiles(files) {
             return;
         }
 
-        // Refresh the list
         await pollStatus();
         startPolling();
 
@@ -242,7 +272,6 @@ async function processUrl(url) {
             return;
         }
 
-        // Refresh and start polling
         await pollStatus();
         startPolling();
 
@@ -251,7 +280,6 @@ async function processUrl(url) {
     }
 }
 
-// Add item to list
 function addItemToList(article) {
     const existing = itemsList.querySelector(`[data-id="${article.id}"]`);
     if (existing) {
@@ -271,9 +299,9 @@ function addItemToList(article) {
 
     div.innerHTML = `
         <div class="item-info">
-            <span class="item-title">${article.title}</span>
-            <span class="item-stage stage-${stage}">${stage}</span>
-            ${article.error ? `<span class="item-error" title="${article.error}">${article.error.substring(0, 30)}...</span>` : ''}
+            <span class="item-title">${escapeHtml(article.title)}</span>
+            <span class="item-stage stage-${escapeHtml(stage)}">${escapeHtml(stage)}</span>
+            ${article.error ? `<span class="item-error" title="${escapeHtml(article.error)}">${escapeHtml(article.error.substring(0, 30))}...</span>` : ''}
         </div>
         <div class="item-controls"></div>
     `;
@@ -304,7 +332,6 @@ async function markDone(id) {
     }
 }
 
-// Retry failed item
 async function retryItem(id) {
     try {
         await fetch(`/article/${id}/reprocess`, { method: 'POST' });
@@ -315,7 +342,41 @@ async function retryItem(id) {
     }
 }
 
-// Delete item
+async function cleanItem(id) {
+    try {
+        const response = await fetch(`/article/${id}/clean`, { method: 'POST' });
+        const data = await response.json();
+        if (data.error) {
+            alert('Clean failed: ' + data.error);
+            return;
+        }
+        await pollStatus();
+        startPolling();
+    } catch (error) {
+        alert('Clean failed: ' + error.message);
+    }
+}
+
+async function regenItem(id) {
+    const voice = voiceSelect.value;
+    try {
+        const response = await fetch(`/article/${id}/regenerate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ voice })
+        });
+        const data = await response.json();
+        if (data.error) {
+            alert('Regenerate failed: ' + data.error);
+            return;
+        }
+        await pollStatus();
+        startPolling();
+    } catch (error) {
+        alert('Regenerate failed: ' + error.message);
+    }
+}
+
 async function deleteItem(id) {
     if (!confirm('Delete this item?')) return;
 
@@ -382,7 +443,69 @@ previewBtn.addEventListener('click', () => {
     };
 });
 
-// Start polling on page load if there are processing items
+textInputBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    textModal.classList.remove('hidden');
+    textInput.focus();
+});
+
+textCancel.addEventListener('click', () => {
+    textModal.classList.add('hidden');
+    textTitle.value = '';
+    textInput.value = '';
+});
+
+textModal.addEventListener('click', (e) => {
+    if (e.target === textModal) {
+        textModal.classList.add('hidden');
+        textTitle.value = '';
+        textInput.value = '';
+    }
+});
+
+textSubmit.addEventListener('click', async () => {
+    const text = textInput.value.trim();
+    const title = textTitle.value.trim();
+
+    if (!text) {
+        alert('Please enter some text');
+        return;
+    }
+
+    if (text.length < 10) {
+        alert('Text is too short (minimum 10 characters)');
+        return;
+    }
+
+    try {
+        const response = await fetch('/process/text', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                text,
+                title,
+                voice: voiceSelect.value
+            })
+        });
+        const data = await response.json();
+
+        if (data.error) {
+            alert('Error: ' + data.error);
+            return;
+        }
+
+        textModal.classList.add('hidden');
+        textTitle.value = '';
+        textInput.value = '';
+
+        await pollStatus();
+        startPolling();
+
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+});
+
 if (hasProcessingItems()) {
     startPolling();
 }

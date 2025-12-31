@@ -2,7 +2,6 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-import pdfplumber
 import trafilatura
 
 _marker_converter = None
@@ -38,6 +37,7 @@ def extract_from_url(url: str) -> tuple[str, str]:
 
 
 def extract_from_pdf(pdf_path: str) -> tuple[str, str]:
+    """Extract text from PDF using marker-pdf."""
     path = Path(pdf_path)
     if not path.exists():
         raise FileNotFoundError(f"PDF not found: {pdf_path}")
@@ -57,52 +57,77 @@ def extract_from_pdf(pdf_path: str) -> tuple[str, str]:
     return title, text
 
 
-def extract_from_pdf_simple(
-    pdf_path: str, max_pages: int | None = None
-) -> tuple[str, str]:
-    path = Path(pdf_path)
-    if not path.exists():
-        raise FileNotFoundError(f"PDF not found: {pdf_path}")
-
-    text_parts = []
-    with pdfplumber.open(path) as pdf:
-        pages = pdf.pages[:max_pages] if max_pages else pdf.pages
-        for page in pages:
-            page_text = page.extract_text()
-            if page_text:
-                text_parts.append(page_text)
-
-    text = "\n\n".join(text_parts)
-    if not text or len(text.strip()) < 100:
-        raise ValueError(f"Could not extract text from PDF: {pdf_path}")
-
-    title = extract_title_from_text(text) or path.stem
-    title = re.sub(r"[_-]+", " ", title).strip()
-
-    return title, text
-
-
 def clean_markdown_for_tts(text: str) -> str:
     """Clean markdown text for TTS reading."""
+    # Remove HTML tags and spans
+    text = re.sub(r"<[^>]+>", "", text)
+
+    # Remove LaTeX math blocks
+    text = re.sub(r"\$\$[\s\S]*?\$\$", "", text)
+    text = re.sub(r"\$[^$]+\$", "", text)
+
     # Remove image references
     text = re.sub(r"!\[.*?\]\(.*?\)", "", text)
-    # Remove links but keep text
+
+    # Remove markdown links but keep text (handles escaped brackets too)
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    text = re.sub(r"\\\[([^\]]+)\\\]", r"\1", text)
+
+    # Remove reference markers like [1], [2,3], [\[6\]], etc.
+    text = re.sub(r"\[\\?\[?\d+(?:,\s*\d+)*\\?\]?\]", "", text)
+    text = re.sub(r"\(#page-\d+-\d+\)", "", text)
+
+    # Remove URLs and email addresses
+    text = re.sub(r"https?://[^\s]+", "", text)
+    text = re.sub(r"\S+@\S+\.\S+", "", text)
+
+    # Remove DOIs and ISBNs
+    text = re.sub(r"doi\.org/[^\s]+", "", text)
+    text = re.sub(r"DOI:?\s*[^\s]+", "", text)
+    text = re.sub(r"ISBN[:\s]*[\d-]+", "", text)
+
+    # Remove academic paper boilerplate
+    text = re.sub(
+        r"Permission to make digital or hard copies.*?owner/author\(s\)\.",
+        "",
+        text,
+        flags=re.DOTALL,
+    )
+    text = re.sub(r"©\s*\d{4}.*?(?=\n\n|\Z)", "", text, flags=re.DOTALL)
+    text = re.sub(r"ACM ISBN.*?(?=\n)", "", text)
+    text = re.sub(r"ACM Reference Format:.*?(?=\n\n)", "", text, flags=re.DOTALL)
+
+    # Remove section labels that don't read well
+    text = re.sub(
+        r"^(CCS CONCEPTS|KEYWORDS|ABSTRACT)[.\s]*$", "", text, flags=re.MULTILINE
+    )
+    text = re.sub(r"^Figure \d+:.*$", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^Table \d+:.*$", "", text, flags=re.MULTILINE)
+
     # Remove horizontal rules
     text = re.sub(r"^-{3,}$", "", text, flags=re.MULTILINE)
     text = re.sub(r"^\*{3,}$", "", text, flags=re.MULTILINE)
-    # Remove code blocks (usually not good for TTS)
+
+    # Remove code blocks
     text = re.sub(r"```[\s\S]*?```", "", text)
-    # Remove inline code
     text = re.sub(r"`[^`]+`", "", text)
+
     # Convert headers to plain text with pause
     text = re.sub(r"^#{1,6}\s+(.+)$", r"\n\1.\n", text, flags=re.MULTILINE)
-    # Remove excessive whitespace
+
+    # Remove bullet points and numbered lists formatting
+    text = re.sub(r"^\s*[-*•]\s+", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^\s*\d+\.\s+", "", text, flags=re.MULTILINE)
+
+    # Remove parenthetical asides with just numbers/letters
+    text = re.sub(r"\(\d+\)", "", text)
+    text = re.sub(r"\([a-z]\)", "", text)
+
+    # Clean up whitespace
+    text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
-    # Remove reference markers like [1], [2,3], etc.
-    text = re.sub(r"\[\d+(?:,\s*\d+)*\]", "", text)
-    # Remove bullet points
-    text = re.sub(r"^\s*[-*]\s+", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^\s+$", "", text, flags=re.MULTILINE)
+
     return text.strip()
 
 

@@ -31,7 +31,6 @@ Text to clean:
 
 
 def is_ollama_running() -> bool:
-    """Check if Ollama is running."""
     try:
         response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=2)
         return response.status_code == 200
@@ -40,16 +39,6 @@ def is_ollama_running() -> bool:
 
 
 def cleanup_text(text: str, model: str = DEFAULT_MODEL) -> str:
-    """
-    Clean up text using a local LLM via Ollama.
-
-    Args:
-        text: The text to clean up
-        model: The Ollama model to use
-
-    Returns:
-        Cleaned text
-    """
     if not is_ollama_running():
         raise RuntimeError("Ollama is not running. Start it with: ollama serve")
 
@@ -80,25 +69,11 @@ def cleanup_text_chunked(
     chunk_size: int = 2000,
     progress_callback=None,
 ) -> str:
-    """
-    Clean up text in chunks for longer documents.
-
-    Args:
-        text: The text to clean up
-        model: The Ollama model to use
-        chunk_size: Max characters per chunk
-        progress_callback: Function called with (current, total, status)
-
-    Returns:
-        Cleaned text
-    """
     if not is_ollama_running():
         raise RuntimeError("Ollama is not running. Start it with: ollama serve")
 
-    # Split into paragraphs
     paragraphs = text.split("\n\n")
 
-    # Group paragraphs into chunks
     chunks = []
     current_chunk = ""
     for para in paragraphs:
@@ -114,7 +89,6 @@ def cleanup_text_chunked(
     if not chunks:
         chunks = [text]
 
-    # Process each chunk
     cleaned_parts = []
     total = len(chunks)
 

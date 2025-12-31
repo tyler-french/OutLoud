@@ -1,54 +1,96 @@
 import glob
 import io
+import logging
 import os
+import platform
 import re
 import tempfile
 from pathlib import Path
 from typing import Callable
 
-for _pattern in [
-    "/opt/homebrew/Cellar/espeak-ng/*/share/espeak-ng-data",
-    "/usr/local/Cellar/espeak-ng/*/share/espeak-ng-data",
-]:
-    _matches = glob.glob(_pattern)
-    if _matches and Path(_matches[0] + "/phontab").exists():
-        os.environ["ESPEAK_DATA_PATH"] = _matches[0]
-        break
-else:
-    for _path in [
-        "/opt/homebrew/share/espeak-ng-data",
-        "/usr/local/share/espeak-ng-data",
-        "/usr/share/espeak-ng-data",
-        "/usr/lib/x86_64-linux-gnu/espeak-ng-data",
-    ]:
-        if Path(_path + "/phontab").exists():
-            os.environ["ESPEAK_DATA_PATH"] = _path
-            break
+try:
+    from python.runfiles import runfiles
+
+    _runfiles = runfiles.Create()
+except ImportError:
+    _runfiles = None
+
+
+def _configure_espeak():
+    system = platform.system()
+    if system == "Darwin":
+        paths = [
+            "/opt/homebrew/share/espeak-ng-data",
+            "/usr/local/share/espeak-ng-data",
+        ]
+        paths.extend(glob.glob("/opt/homebrew/Cellar/espeak-ng/*/share/espeak-ng-data"))
+        paths.extend(glob.glob("/usr/local/Cellar/espeak-ng/*/share/espeak-ng-data"))
+        for path in paths:
+            if Path(path).exists():
+                os.environ["ESPEAK_DATA_PATH"] = path
+                return
+        raise RuntimeError("espeak-ng not found. Install with: brew install espeak-ng")
+    elif system == "Linux":
+        if _runfiles:
+            lib = _runfiles.Rlocation(
+                "bazel_linux_packages++apt+espeak_ng/usr/lib/x86_64-linux-gnu/libespeak-ng.so.1"
+            )
+            data = _runfiles.Rlocation(
+                "bazel_linux_packages++apt+espeak_ng/usr/lib/x86_64-linux-gnu/espeak-ng-data/phontab"
+            )
+            pcaudio = _runfiles.Rlocation(
+                "bazel_linux_packages++apt+espeak_ng/usr/lib/x86_64-linux-gnu/libpcaudio.so.0"
+            )
+            sonic = _runfiles.Rlocation(
+                "bazel_linux_packages++apt+espeak_ng/usr/lib/x86_64-linux-gnu/libsonic.so.0"
+            )
+            if lib and data:
+                import ctypes
+
+                if sonic:
+                    ctypes.CDLL(str(Path(sonic).resolve()), mode=ctypes.RTLD_GLOBAL)
+                if pcaudio:
+                    ctypes.CDLL(str(Path(pcaudio).resolve()), mode=ctypes.RTLD_GLOBAL)
+                os.environ["PHONEMIZER_ESPEAK_LIBRARY"] = str(Path(lib).resolve())
+                os.environ["ESPEAK_DATA_PATH"] = str(Path(data).resolve().parent)
+                return
+        if Path("/usr/lib/x86_64-linux-gnu/espeak-ng-data").exists():
+            os.environ["ESPEAK_DATA_PATH"] = "/usr/lib/x86_64-linux-gnu/espeak-ng-data"
+            return
+        raise RuntimeError(
+            "espeak-ng not found. Install with: apt install espeak-ng-data"
+        )
+    else:
+        raise RuntimeError(f"Unsupported platform: {system}")
+
+
+_configure_espeak()
 
 import numpy as np  # noqa: E402
 import soundfile as sf  # noqa: E402
 from kokoro_onnx import Kokoro  # noqa: E402
 from pydub import AudioSegment  # noqa: E402
 
-try:
-    from python.runfiles import runfiles
-except ImportError:
-    runfiles = None
+logging.getLogger("phonemizer").setLevel(logging.ERROR)
+logging.getLogger("kokoro_onnx").setLevel(logging.ERROR)
 
 _BITRATE = "192k"
 
 
 def _find_model_paths() -> tuple[Path, Path]:
-    if runfiles:
-        r = runfiles.Create()
-        if r:
-            model_path = r.Rlocation("+_repo_rules+kokoro_model/file/kokoro-v1.0.onnx")
-            voices_path = r.Rlocation("+_repo_rules+kokoro_voices/file/voices-v1.0.bin")
-            if model_path and voices_path:
-                return Path(model_path), Path(voices_path)
-
-    base_dir = Path(__file__).parent
-    return base_dir / "kokoro-v1.0.onnx", base_dir / "voices-v1.0.bin"
+    if _runfiles:
+        model_path = _runfiles.Rlocation("kokoro_model/file/kokoro-v1.0.onnx")
+        voices_path = _runfiles.Rlocation("kokoro_voices/file/voices-v1.0.bin")
+        if model_path and voices_path:
+            return Path(model_path), Path(voices_path)
+    for base in [Path.cwd(), Path(__file__).parent, Path.home() / ".outloud"]:
+        model = base / "kokoro-v1.0.onnx"
+        voices = base / "voices-v1.0.bin"
+        if model.exists() and voices.exists():
+            return model, voices
+    raise RuntimeError(
+        "Kokoro model files not found. Run with Bazel or place model files in working directory."
+    )
 
 
 MODEL_PATH, VOICES_PATH = _find_model_paths()
@@ -62,7 +104,21 @@ def get_kokoro() -> Kokoro:
     return _kokoro
 
 
-def split_into_chunks(text: str, max_chars: int = 1000) -> list[str]:
+def split_into_chunks(text: str, max_chars: int = 350) -> list[str]:
+    """Split text into chunks that are conservative for the TTS phoneme limit.
+
+    The TTS stack (Kokoro + espeak-ng) has an approximate upper bound of ~510
+    phonemes per request. Because there is no simple, language-agnostic mapping
+    from characters to phonemes, we use a character-count heuristic instead.
+
+    The default ``max_chars=350`` balances safety with performance - it stays
+    well under the phoneme limit for typical English text while avoiding
+    excessive chunking. The retry logic in ``_generate_chunk_audio`` handles
+    edge cases where chunks exceed the phoneme limit by splitting further.
+
+    Callers may pass a smaller value for more conservative chunking, or a
+    larger value if they've profiled their workload and want fewer chunks.
+    """
     abbreviations = r"(?<!\bMr)(?<!\bMrs)(?<!\bDr)(?<!\bMs)(?<!\bProf)(?<!\bSr)(?<!\bJr)(?<!\bvs)(?<!\betc)(?<!\be\.g)(?<!\bi\.e)(?<!\bNo)(?<!\bSt)"
     pattern = abbreviations + r'(?<=[.!?])\s+(?=[A-Z"\']|$)'
     sentences = [s.strip() for s in re.split(pattern, text) if s.strip()]
@@ -77,13 +133,13 @@ def split_into_chunks(text: str, max_chars: int = 1000) -> list[str]:
             if current_chunk:
                 chunks.append(current_chunk.strip())
             if len(sentence) > max_chars:
-                paragraphs = sentence.split("\n\n")
-                for para in paragraphs:
-                    if len(para) <= max_chars:
-                        chunks.append(para.strip())
+                parts = re.split(r"[,;:]\s+", sentence)
+                for part in parts:
+                    if len(part) <= max_chars:
+                        chunks.append(part.strip())
                     else:
-                        for i in range(0, len(para), max_chars):
-                            chunks.append(para[i : i + max_chars].strip())
+                        for i in range(0, len(part), max_chars):
+                            chunks.append(part[i : i + max_chars].strip())
                 current_chunk = ""
             else:
                 current_chunk = sentence + " "
@@ -91,7 +147,35 @@ def split_into_chunks(text: str, max_chars: int = 1000) -> list[str]:
     if current_chunk.strip():
         chunks.append(current_chunk.strip())
 
-    return chunks if chunks else [text]
+    return [c for c in chunks if c] if chunks else [text]
+
+
+def _generate_chunk_audio(
+    kokoro, chunk: str, voice: str, speed: float, max_retries: int = 3
+):
+    """Generate audio for a single chunk, retrying with smaller pieces if needed."""
+    try:
+        samples, sample_rate = kokoro.create(chunk, voice=voice, speed=speed)
+        return samples, sample_rate
+    except IndexError as e:
+        if "510" in str(e) and max_retries > 0:
+            mid = len(chunk) // 2
+            space_pos = chunk.rfind(" ", 0, mid)
+            if space_pos > 0:
+                mid = space_pos
+
+            part1 = chunk[:mid].strip()
+            part2 = chunk[mid:].strip()
+
+            samples1, sr = _generate_chunk_audio(
+                kokoro, part1, voice, speed, max_retries - 1
+            )
+            samples2, sr = _generate_chunk_audio(
+                kokoro, part2, voice, speed, max_retries - 1
+            )
+
+            return np.concatenate([samples1, samples2]), sr
+        raise
 
 
 def generate_audio_chunked(
@@ -115,7 +199,7 @@ def generate_audio_chunked(
             progress_callback(
                 i + 1, total_chunks, f"Processing chunk {i + 1}/{total_chunks}"
             )
-        samples, sample_rate = kokoro.create(chunk, voice=voice, speed=speed)
+        samples, sample_rate = _generate_chunk_audio(kokoro, chunk, voice, speed)
         all_samples.append(samples)
 
     if progress_callback:
@@ -149,7 +233,9 @@ def generate_preview(voice: str, speed: float = 1.0) -> bytes:
     kokoro = get_kokoro()
 
     voices = {v["id"]: v for v in get_available_voices()}
-    voice_info = voices.get(voice, {"name": "this voice"})
+    if voice not in voices:
+        raise ValueError(f"Invalid voice ID: {voice}")
+    voice_info = voices[voice]
     preview_text = f"Hi, I'm {voice_info['name']}. I'll be reading your articles."
 
     samples, sample_rate = kokoro.create(preview_text, voice=voice, speed=speed)

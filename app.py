@@ -1,21 +1,46 @@
-import json
-import queue
-import threading
-import uuid
+import hashlib
+import logging
+from urllib.parse import urlparse
 
 from flask import Flask, render_template, request, jsonify, send_file, Response
 from werkzeug.utils import secure_filename
 
 import db
-import extractor
 import tts
-import cleaner
+import worker
 from config import TEXTS_DIR, AUDIO_DIR, UPLOAD_DIR
 
-app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50MB max upload
 
-progress_queues: dict[str, queue.Queue] = {}
+def compute_file_hash(file_storage) -> str:
+    """Compute SHA256 hash of uploaded file."""
+    sha256 = hashlib.sha256()
+    file_storage.seek(0)
+    for chunk in iter(lambda: file_storage.read(8192), b""):
+        sha256.update(chunk)
+    file_storage.seek(0)
+    return sha256.hexdigest()[:16]
+
+
+app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
+
+
+class StatusEndpointFilter(logging.Filter):
+    def filter(self, record):
+        return "/articles/status" not in record.getMessage()
+
+
+logging.getLogger("werkzeug").addFilter(StatusEndpointFilter())
+
+
+_valid_voices = None
+
+
+def _get_valid_voices():
+    global _valid_voices
+    if _valid_voices is None:
+        _valid_voices = {v["id"] for v in tts.get_available_voices()}
+    return _valid_voices
 
 
 @app.route("/")
@@ -29,76 +54,70 @@ def index():
 def process_url():
     data = request.get_json()
     url = data.get("url", "").strip()
-    voice = data.get("voice", "am_adam")
+    voice = data.get("voice", "af_heart")
 
     if not url:
         return jsonify({"error": "URL is required"}), 400
 
-    task_id = str(uuid.uuid4())[:8]
-    progress_queues[task_id] = queue.Queue()
+    if voice not in _get_valid_voices():
+        return jsonify({"error": f"Invalid voice ID: {voice}"}), 400
 
-    def process_task():
-        try:
-            q = progress_queues[task_id]
+    if len(url) > 2048:
+        return jsonify({"error": "URL too long"}), 400
 
-            q.put({"status": "Extracting text...", "percent": 10})
-            title, text = extractor.extract_from_url(url)
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return jsonify({"error": "Invalid URL - must be HTTP or HTTPS"}), 400
 
-            file_id = str(uuid.uuid4())[:8]
-            txt_filename = f"{file_id}.txt"
-            txt_path = TEXTS_DIR / txt_filename
-            extractor.save_text(text, str(txt_path))
+    title = url if len(url) <= 50 else url[:47] + "..."
 
-            article_id = db.create_article(
-                title=title, source_type="url", source_path=url, txt_path=txt_filename
-            )
+    article_id = db.create_article(
+        title=title,
+        source_type="url",
+        source_path=url,
+        voice=voice,
+    )
 
-            if cleaner.is_ollama_running():
-                q.put({"status": "Cleaning text...", "percent": 30})
-                try:
-                    cleaned = cleaner.cleanup_text_chunked(
-                        text,
-                        progress_callback=lambda c, t, s: q.put(
-                            {
-                                "status": f"Cleaning: {s}",
-                                "percent": 30 + int((c / t) * 20),
-                            }
-                        ),
-                    )
-                    txt_path.write_text(cleaned, encoding="utf-8")
-                    text = cleaned
-                except Exception as e:
-                    q.put({"status": f"Cleanup skipped: {str(e)[:50]}", "percent": 50})
-            else:
-                q.put(
-                    {"status": "Skipping cleanup (Ollama not running)", "percent": 50}
-                )
+    worker.notify_new_article()
+    return jsonify({"article_id": article_id})
 
-            q.put({"status": "Generating audio...", "percent": 55})
-            mp3_filename = f"{file_id}.mp3"
-            mp3_path = AUDIO_DIR / mp3_filename
 
-            tts.generate_audio_chunked(
-                text,
-                str(mp3_path),
-                voice=voice,
-                progress_callback=lambda c, t, s: q.put(
-                    {"status": f"Audio: {s}", "percent": 55 + int((c / t) * 40)}
-                ),
-            )
+@app.route("/process/text", methods=["POST"])
+def process_text():
+    data = request.get_json()
+    text = data.get("text", "").strip()
+    title = data.get("title", "").strip() or "Pasted Text"
+    voice = data.get("voice", "af_heart")
 
-            db.update_article_mp3(article_id, mp3_filename)
+    if not text:
+        return jsonify({"error": "Text is required"}), 400
 
-            article = db.get_article(article_id)
-            q.put({"done": True, "article": article})
+    if voice not in _get_valid_voices():
+        return jsonify({"error": f"Invalid voice ID: {voice}"}), 400
 
-        except Exception as e:
-            progress_queues[task_id].put({"error": str(e)})
+    if len(text) < 10:
+        return jsonify({"error": "Text too short"}), 400
 
-    thread = threading.Thread(target=process_task)
-    thread.start()
+    content_hash = hashlib.sha256(text.encode()).hexdigest()[:16]
 
-    return jsonify({"task_id": task_id})
+    txt_filename = f"{content_hash}_raw.txt"
+    txt_path = TEXTS_DIR / txt_filename
+    txt_path.parent.mkdir(parents=True, exist_ok=True)
+    txt_path.write_text(text, encoding="utf-8")
+
+    article_id = db.create_article(
+        title=title[:100],
+        source_type="text",
+        source_path="",
+        txt_path=txt_filename,
+        voice=voice,
+        content_hash=content_hash,
+    )
+
+    db.update_article_stage(article_id, "extracted", raw_txt_path=txt_filename)
+
+    worker.notify_new_article()
+    return jsonify({"article_id": article_id})
 
 
 @app.route("/process/pdf", methods=["POST"])
@@ -107,110 +126,150 @@ def process_pdf():
         return jsonify({"error": "No file provided"}), 400
 
     file = request.files["file"]
-    voice = request.form.get("voice", "am_adam")
+    voice = request.form.get("voice", "af_heart")
 
     if file.filename == "":
         return jsonify({"error": "No file selected"}), 400
 
+    if voice not in _get_valid_voices():
+        return jsonify({"error": f"Invalid voice ID: {voice}"}), 400
+
     if not file.filename.lower().endswith(".pdf"):
         return jsonify({"error": "File must be a PDF"}), 400
 
+    content_hash = compute_file_hash(file)
+    existing = db.get_article_by_hash(content_hash)
+    if existing:
+        return jsonify({"article_id": existing["id"], "duplicate": True})
+
     filename = secure_filename(file.filename)
-    file_id = str(uuid.uuid4())[:8]
-    pdf_filename = f"{file_id}_{filename}"
+    pdf_filename = f"{content_hash}_{filename}"
     pdf_path = UPLOAD_DIR / pdf_filename
     file.save(str(pdf_path))
 
-    task_id = str(uuid.uuid4())[:8]
-    progress_queues[task_id] = queue.Queue()
+    article_id = db.create_article(
+        title=filename.replace(".pdf", ""),
+        source_type="pdf",
+        source_path=pdf_filename,
+        voice=voice,
+        content_hash=content_hash,
+    )
 
-    def process_task():
-        try:
-            q = progress_queues[task_id]
-
-            q.put({"status": "Parsing PDF...", "percent": 5})
-            title, text = extractor.extract_from_pdf(str(pdf_path))
-
-            q.put({"status": "Saving text...", "percent": 20})
-            txt_filename = f"{file_id}.txt"
-            txt_path = TEXTS_DIR / txt_filename
-            extractor.save_text(text, str(txt_path))
-
-            article_id = db.create_article(
-                title=title,
-                source_type="pdf",
-                source_path=pdf_filename,
-                txt_path=txt_filename,
-            )
-
-            if cleaner.is_ollama_running():
-                q.put({"status": "Cleaning text...", "percent": 30})
-                try:
-                    cleaned = cleaner.cleanup_text_chunked(
-                        text,
-                        progress_callback=lambda c, t, s: q.put(
-                            {
-                                "status": f"Cleaning: {s}",
-                                "percent": 30 + int((c / t) * 20),
-                            }
-                        ),
-                    )
-                    txt_path.write_text(cleaned, encoding="utf-8")
-                    text = cleaned
-                except Exception as e:
-                    q.put({"status": f"Cleanup skipped: {str(e)[:50]}", "percent": 50})
-            else:
-                q.put(
-                    {"status": "Skipping cleanup (Ollama not running)", "percent": 50}
-                )
-
-            q.put({"status": "Generating audio...", "percent": 55})
-            mp3_filename = f"{file_id}.mp3"
-            mp3_path = AUDIO_DIR / mp3_filename
-
-            tts.generate_audio_chunked(
-                text,
-                str(mp3_path),
-                voice=voice,
-                progress_callback=lambda c, t, s: q.put(
-                    {"status": f"Audio: {s}", "percent": 55 + int((c / t) * 40)}
-                ),
-            )
-
-            db.update_article_mp3(article_id, mp3_filename)
-
-            article = db.get_article(article_id)
-            q.put({"done": True, "article": article})
-
-        except Exception as e:
-            progress_queues[task_id].put({"error": str(e)})
-
-    thread = threading.Thread(target=process_task)
-    thread.start()
-
-    return jsonify({"task_id": task_id})
+    worker.notify_new_article()
+    return jsonify({"article_id": article_id})
 
 
-@app.route("/process/progress/<task_id>")
-def process_progress(task_id):
-    def event_stream():
-        if task_id not in progress_queues:
-            yield f"data: {json.dumps({'error': 'Task not found'})}\n\n"
-            return
+@app.route("/import/pdfs", methods=["POST"])
+def import_pdfs():
+    if "files" not in request.files:
+        return jsonify({"error": "No files provided"}), 400
 
-        q = progress_queues[task_id]
-        while True:
-            try:
-                data = q.get(timeout=120)
-                yield f"data: {json.dumps(data)}\n\n"
+    files = request.files.getlist("files")
+    voice = request.form.get("voice", "af_heart")
 
-                if data.get("done") or data.get("error"):
-                    del progress_queues[task_id]
-                    break
-            except queue.Empty:
-                yield f"data: {json.dumps({'status': 'Processing...'})}\n\n"
+    if not files or all(f.filename == "" for f in files):
+        return jsonify({"error": "No files selected"}), 400
 
-    return Response(event_stream(), mimetype="text/event-stream")
+    if voice not in _get_valid_voices():
+        return jsonify({"error": f"Invalid voice ID: {voice}"}), 400
+
+    article_ids = []
+    duplicates = []
+    for file in files:
+        if file.filename == "" or not file.filename.lower().endswith(".pdf"):
+            continue
+
+        content_hash = compute_file_hash(file)
+        existing = db.get_article_by_hash(content_hash)
+        if existing:
+            duplicates.append(existing["id"])
+            continue
+
+        filename = secure_filename(file.filename)
+        pdf_filename = f"{content_hash}_{filename}"
+        pdf_path = UPLOAD_DIR / pdf_filename
+        file.save(str(pdf_path))
+
+        article_id = db.create_article(
+            title=filename.replace(".pdf", ""),
+            source_type="pdf",
+            source_path=pdf_filename,
+            voice=voice,
+            content_hash=content_hash,
+        )
+        article_ids.append(article_id)
+
+    if article_ids:
+        worker.notify_new_article()
+
+    return jsonify(
+        {
+            "article_ids": article_ids,
+            "count": len(article_ids),
+            "duplicates": duplicates,
+        }
+    )
+
+
+@app.route("/article/<int:article_id>/reprocess", methods=["POST"])
+def reprocess_article(article_id):
+    article = db.get_article(article_id)
+    if not article:
+        return jsonify({"error": "Article not found"}), 404
+
+    db.reset_article_for_reprocessing(article_id)
+    worker.notify_new_article()
+    return jsonify({"success": True})
+
+
+@app.route("/article/<int:article_id>/clean", methods=["POST"])
+def clean_article(article_id):
+    article = db.get_article(article_id)
+    if not article:
+        return jsonify({"error": "Article not found"}), 404
+
+    if article["processing_stage"] not in ("ready", "completed", "error"):
+        return jsonify({"error": "Article is still processing"}), 400
+
+    if not article.get("raw_txt_path"):
+        return jsonify({"error": "No raw text available"}), 400
+
+    db.reset_article_for_cleaning(article_id)
+    worker.notify_new_article()
+    return jsonify({"success": True})
+
+
+@app.route("/article/<int:article_id>/regenerate", methods=["POST"])
+def regenerate_article(article_id):
+    article = db.get_article(article_id)
+    if not article:
+        return jsonify({"error": "Article not found"}), 404
+
+    if article["processing_stage"] not in ("ready", "completed", "error"):
+        return jsonify({"error": "Article is still processing"}), 400
+
+    if not article.get("cleaned_txt_path"):
+        return jsonify({"error": "No text available"}), 400
+
+    cleaned_txt_path = TEXTS_DIR / article["cleaned_txt_path"]
+    if not cleaned_txt_path.exists():
+        return jsonify({"error": "Text file not found"}), 400
+
+    data = request.get_json() or {}
+    voice = data.get("voice", article.get("voice", "af_heart"))
+
+    if voice not in _get_valid_voices():
+        return jsonify({"error": f"Invalid voice ID: {voice}"}), 400
+
+    db.reset_article_for_audio(article_id, voice)
+    worker.notify_new_article()
+    return jsonify({"success": True})
+
+
+@app.route("/articles/status")
+def articles_status():
+    articles = db.get_all_articles()
+    return jsonify(articles)
 
 
 @app.route("/complete/<int:article_id>", methods=["PUT"])
@@ -230,10 +289,11 @@ def article_endpoint(article_id):
         return jsonify({"error": "Article not found"}), 404
 
     if request.method == "DELETE":
-        if article["txt_path"]:
-            txt_path = TEXTS_DIR / article["txt_path"]
-            if txt_path.exists():
-                txt_path.unlink()
+        for txt_field in ["txt_path", "raw_txt_path", "cleaned_txt_path"]:
+            if article.get(txt_field):
+                txt_path = TEXTS_DIR / article[txt_field]
+                if txt_path.exists():
+                    txt_path.unlink()
 
         if article["mp3_path"]:
             mp3_path = AUDIO_DIR / article["mp3_path"]
@@ -253,7 +313,6 @@ def article_endpoint(article_id):
 
 @app.route("/preview/voice/<voice_id>")
 def preview_voice(voice_id):
-    """Generate a short voice preview."""
     voices = {v["id"]: v for v in tts.get_available_voices()}
     if voice_id not in voices:
         return jsonify({"error": "Voice not found"}), 404
@@ -283,4 +342,5 @@ def serve_audio(article_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5001)
+    worker.start_worker()
+    app.run(debug=True, port=5001, use_reloader=False)
