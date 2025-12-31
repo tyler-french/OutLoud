@@ -3,8 +3,9 @@ module(
     version = "0.1.0",
 )
 
-bazel_dep(name = "platforms", version = "0.0.11")
+bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "rules_python", version = "1.6.3")
+bazel_dep(name = "bazel_linux_packages", version = "0.2.1")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.toolchain(
@@ -56,3 +57,12 @@ http_archive(
     strip_prefix = "ruff-aarch64-apple-darwin",
     build_file_content = 'exports_files(["ruff"])',
 )
+
+apt = use_extension("@bazel_linux_packages//apt:extensions.bzl", "apt")
+apt.debian(
+    name = "espeak_ng",
+    lockfile = "//:espeak.lock.json",
+    packages = ["libespeak-ng1", "espeak-ng-data", "libpcaudio0", "libsonic0"],
+    suites = ["bookworm"],
+)
+use_repo(apt, "espeak_ng")

@@ -42,10 +42,10 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg libsndfile1 espeak-ng
+          sudo apt-get install -y ffmpeg libsndfile1
 
-      - name: Build
-        run: bazel test //...
+      - name: Build and test
+        run: bazel test //... --lockfile_mode=error
 
       - name: Test app starts
         run: |
@@ -69,7 +69,7 @@ jobs:
           repository-cache: true
 
       - name: Install system dependencies
-        run: brew install ffmpeg libsndfile
+        run: brew install ffmpeg libsndfile espeak-ng
 
       - name: Build
         run: bazel build //...
