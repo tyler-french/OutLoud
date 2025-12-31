@@ -9,12 +9,147 @@ const playerBar = document.getElementById('player-bar');
 const audioPlayer = document.getElementById('audio-player');
 const currentTitle = document.getElementById('current-title');
 const closePlayer = document.getElementById('close-player');
-const processingPanel = document.getElementById('processing-panel');
-const processingList = document.getElementById('processing-list');
 const previewBtn = document.getElementById('preview-voice');
 
-const processingItems = new Map();
 let previewAudio = null;
+
+// Polling interval for status updates
+let pollInterval = null;
+
+// Start polling if there are items being processed
+function startPolling() {
+    if (pollInterval) return;
+    pollInterval = setInterval(pollStatus, 2000);
+}
+
+function stopPolling() {
+    if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+    }
+}
+
+// Check if any items need polling
+function hasProcessingItems() {
+    const items = itemsList.querySelectorAll('.item');
+    for (const item of items) {
+        const stage = item.dataset.stage;
+        if (stage && !['ready', 'completed', 'error'].includes(stage)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Poll for status updates
+async function pollStatus() {
+    try {
+        const response = await fetch('/articles/status');
+        const articles = await response.json();
+
+        for (const article of articles) {
+            updateItemInList(article);
+        }
+
+        // Stop polling if nothing is processing
+        if (!hasProcessingItems()) {
+            stopPolling();
+        }
+    } catch (error) {
+        console.error('Polling error:', error);
+    }
+}
+
+// Update an item in the list
+function updateItemInList(article) {
+    const item = itemsList.querySelector(`[data-id="${article.id}"]`);
+    if (!item) {
+        // New item, add it
+        addItemToList(article);
+        return;
+    }
+
+    const currentStage = item.dataset.stage;
+    if (currentStage === article.processing_stage) {
+        return; // No change
+    }
+
+    // Update the item
+    item.dataset.stage = article.processing_stage || 'ready';
+    item.dataset.status = article.status;
+
+    // Update classes
+    item.classList.toggle('done', article.status === 'completed');
+    item.classList.toggle('error', article.processing_stage === 'error');
+
+    // Update stage display
+    const stageEl = item.querySelector('.item-stage');
+    if (stageEl) {
+        stageEl.textContent = article.processing_stage || 'ready';
+        stageEl.className = `item-stage stage-${article.processing_stage || 'ready'}`;
+    }
+
+    // Update title if changed
+    const titleEl = item.querySelector('.item-title');
+    if (titleEl && titleEl.textContent !== article.title) {
+        titleEl.textContent = article.title;
+    }
+
+    // Update error display
+    let errorEl = item.querySelector('.item-error');
+    if (article.error) {
+        if (!errorEl) {
+            errorEl = document.createElement('span');
+            errorEl.className = 'item-error';
+            item.querySelector('.item-info').appendChild(errorEl);
+        }
+        errorEl.textContent = article.error.substring(0, 30) + '...';
+        errorEl.title = article.error;
+    } else if (errorEl) {
+        errorEl.remove();
+    }
+
+    // Update controls
+    updateItemControls(item, article);
+}
+
+function updateItemControls(item, article) {
+    const controls = item.querySelector('.item-controls');
+    const stage = article.processing_stage || 'ready';
+
+    // Clear existing buttons
+    controls.innerHTML = '';
+
+    if (stage === 'ready' && article.mp3_path) {
+        const playBtn = document.createElement('button');
+        playBtn.className = 'play-btn';
+        playBtn.textContent = 'Play';
+        playBtn.onclick = () => playItem(article.id);
+        controls.appendChild(playBtn);
+
+        if (article.status !== 'completed') {
+            const doneBtn = document.createElement('button');
+            doneBtn.className = 'done-btn';
+            doneBtn.textContent = 'Done';
+            doneBtn.onclick = () => markDone(article.id);
+            controls.appendChild(doneBtn);
+        }
+    }
+
+    if (stage === 'error') {
+        const retryBtn = document.createElement('button');
+        retryBtn.className = 'retry-btn';
+        retryBtn.textContent = 'Retry';
+        retryBtn.onclick = () => retryItem(article.id);
+        controls.appendChild(retryBtn);
+    }
+
+    const newDeleteBtn = document.createElement('button');
+    newDeleteBtn.className = 'delete-btn';
+    newDeleteBtn.textContent = 'X';
+    newDeleteBtn.onclick = () => deleteItem(article.id);
+    controls.appendChild(newDeleteBtn);
+}
 
 dropZone.addEventListener('click', (e) => {
     if (e.target !== urlInput) {
@@ -36,11 +171,17 @@ dropZone.addEventListener('drop', (e) => {
     dropZone.classList.remove('drag-over');
 
     const files = Array.from(e.dataTransfer.files).filter(f => f.name.endsWith('.pdf'));
-    files.forEach(file => processFile(file));
+    if (files.length > 0) {
+        uploadFiles(files);
+    }
 });
 
+// File input change - batch upload
 fileInput.addEventListener('change', (e) => {
-    Array.from(e.target.files).forEach(file => processFile(file));
+    const files = Array.from(e.target.files);
+    if (files.length > 0) {
+        uploadFiles(files);
+    }
     fileInput.value = '';
 });
 
@@ -58,36 +199,36 @@ urlInput.addEventListener('click', (e) => {
     e.stopPropagation();
 });
 
-async function processFile(file) {
-    const tempId = 'temp-' + Date.now() + Math.random().toString(36).substr(2, 9);
-    addProcessingItem(tempId, file.name);
-
+// Batch upload PDFs
+async function uploadFiles(files) {
     try {
         const formData = new FormData();
-        formData.append('file', file);
+        for (const file of files) {
+            formData.append('files', file);
+        }
         formData.append('voice', voiceSelect.value);
 
-        const response = await fetch('/process/pdf', {
+        const response = await fetch('/import/pdfs', {
             method: 'POST',
             body: formData
         });
         const data = await response.json();
 
-        if (data.error) throw new Error(data.error);
+        if (data.error) {
+            alert('Error: ' + data.error);
+            return;
+        }
 
-        listenToProgress(data.task_id, tempId, file.name);
+        // Refresh the list
+        await pollStatus();
+        startPolling();
 
     } catch (error) {
-        updateProcessingItem(tempId, 'Error: ' + error.message, 0);
-        setTimeout(() => removeProcessingItem(tempId), 3000);
+        alert('Upload failed: ' + error.message);
     }
 }
 
 async function processUrl(url) {
-    const tempId = 'temp-' + Date.now();
-    const displayName = new URL(url).hostname;
-    addProcessingItem(tempId, displayName);
-
     try {
         const response = await fetch('/process/url', {
             method: 'POST',
@@ -96,110 +237,48 @@ async function processUrl(url) {
         });
         const data = await response.json();
 
-        if (data.error) throw new Error(data.error);
+        if (data.error) {
+            alert('Error: ' + data.error);
+            return;
+        }
 
-        listenToProgress(data.task_id, tempId, displayName);
+        // Refresh and start polling
+        await pollStatus();
+        startPolling();
 
     } catch (error) {
-        updateProcessingItem(tempId, 'Error: ' + error.message, 0);
-        setTimeout(() => removeProcessingItem(tempId), 3000);
+        alert('Error: ' + error.message);
     }
 }
 
-function listenToProgress(taskId, tempId, name) {
-    const eventSource = new EventSource(`/process/progress/${taskId}`);
-
-    eventSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-
-        if (data.error) {
-            eventSource.close();
-            updateProcessingItem(tempId, 'Error: ' + data.error, 0);
-            setTimeout(() => removeProcessingItem(tempId), 3000);
-            return;
-        }
-
-        if (data.done) {
-            eventSource.close();
-            removeProcessingItem(tempId);
-            addItemToList(data.article);
-            return;
-        }
-
-        const percent = data.percent || 0;
-        const status = data.status || 'Processing...';
-        updateProcessingItem(tempId, status, percent);
-    };
-
-    eventSource.onerror = () => {
-        eventSource.close();
-        updateProcessingItem(tempId, 'Connection lost', 0);
-        setTimeout(() => removeProcessingItem(tempId), 3000);
-    };
-}
-
-function addProcessingItem(id, name) {
-    processingItems.set(id, { name, status: 'Starting...', percent: 0 });
-    updateProcessingPanel();
-}
-
-function updateProcessingItem(id, status, percent) {
-    if (processingItems.has(id)) {
-        processingItems.get(id).status = status;
-        processingItems.get(id).percent = percent;
-        updateProcessingPanel();
-    }
-}
-
-function removeProcessingItem(id) {
-    processingItems.delete(id);
-    updateProcessingPanel();
-}
-
-function updateProcessingPanel() {
-    if (processingItems.size === 0) {
-        processingPanel.classList.add('hidden');
-        return;
-    }
-
-    processingPanel.classList.remove('hidden');
-    processingList.innerHTML = '';
-
-    processingItems.forEach((item, id) => {
-        const div = document.createElement('div');
-        div.className = 'processing-item';
-        div.innerHTML = `
-            <div class="name">${item.name}</div>
-            <div class="status">${item.status}</div>
-            <div class="progress-bar-mini">
-                <div class="fill" style="width: ${item.percent}%"></div>
-            </div>
-        `;
-        processingList.appendChild(div);
-    });
-}
-
+// Add item to list
 function addItemToList(article) {
     const existing = itemsList.querySelector(`[data-id="${article.id}"]`);
     if (existing) {
-        existing.remove();
+        updateItemInList(article);
+        return;
     }
 
+    const stage = article.processing_stage || 'ready';
     const div = document.createElement('div');
-    div.className = 'item' + (article.status === 'completed' ? ' done' : '');
+    div.className = 'item';
+    if (article.status === 'completed') div.classList.add('done');
+    if (stage === 'error') div.classList.add('error');
+
     div.dataset.id = article.id;
     div.dataset.status = article.status;
+    div.dataset.stage = stage;
+
     div.innerHTML = `
         <div class="item-info">
             <span class="item-title">${article.title}</span>
-            <span class="item-status">${article.status}</span>
+            <span class="item-stage stage-${stage}">${stage}</span>
+            ${article.error ? `<span class="item-error" title="${article.error}">${article.error.substring(0, 30)}...</span>` : ''}
         </div>
-        <div class="item-controls">
-            ${article.mp3_path ? `<button class="play-btn" onclick="playItem(${article.id})">Play</button>` : ''}
-            ${article.status !== 'completed' && article.mp3_path ? `<button class="done-btn" onclick="markDone(${article.id})">Done</button>` : ''}
-            <button class="delete-btn" onclick="deleteItem(${article.id})">X</button>
-        </div>
+        <div class="item-controls"></div>
     `;
+
+    updateItemControls(div, article);
     itemsList.insertBefore(div, itemsList.firstChild);
 }
 
@@ -220,12 +299,23 @@ async function markDone(id) {
     if (item) {
         item.classList.add('done');
         item.dataset.status = 'completed';
-        item.querySelector('.item-status').textContent = 'completed';
         const doneBtn = item.querySelector('.done-btn');
         if (doneBtn) doneBtn.remove();
     }
 }
 
+// Retry failed item
+async function retryItem(id) {
+    try {
+        await fetch(`/article/${id}/reprocess`, { method: 'POST' });
+        await pollStatus();
+        startPolling();
+    } catch (error) {
+        alert('Retry failed: ' + error.message);
+    }
+}
+
+// Delete item
 async function deleteItem(id) {
     if (!confirm('Delete this item?')) return;
 
@@ -291,3 +381,8 @@ previewBtn.addEventListener('click', () => {
         console.error('Preview failed to load');
     };
 });
+
+// Start polling on page load if there are processing items
+if (hasProcessingItems()) {
+    startPolling();
+}

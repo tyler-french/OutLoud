@@ -149,9 +149,7 @@ def generate_preview(voice: str, speed: float = 1.0) -> bytes:
     kokoro = get_kokoro()
 
     voices = {v["id"]: v for v in get_available_voices()}
-    if voice not in voices:
-        raise ValueError(f"Invalid voice ID: {voice}")
-    voice_info = voices[voice]
+    voice_info = voices.get(voice, {"name": "this voice"})
     preview_text = f"Hi, I'm {voice_info['name']}. I'll be reading your articles."
 
     samples, sample_rate = kokoro.create(preview_text, voice=voice, speed=speed)
