@@ -20,6 +20,7 @@ pip.parse(
     hub_name = "pypi",
     python_version = "3.11",
     requirements_lock = "//:requirements.lock",
+    extra_pip_args = ["--index-url=https://pypi.org/simple/"],
     experimental_requirement_cycles = {
         "lxml": ["lxml", "lxml-html-clean"],
     },
