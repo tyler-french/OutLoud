@@ -3,6 +3,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import trafilatura
+from marker.converters.pdf import PdfConverter
+from marker.models import create_model_dict
 
 _marker_converter = None
 
@@ -10,9 +12,6 @@ _marker_converter = None
 def get_marker_converter():
     global _marker_converter
     if _marker_converter is None:
-        from marker.converters.pdf import PdfConverter
-        from marker.models import create_model_dict
-
         _marker_converter = PdfConverter(artifact_dict=create_model_dict())
     return _marker_converter
 

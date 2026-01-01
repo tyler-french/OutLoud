@@ -1,10 +1,30 @@
+import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+from python.runfiles import runfiles
+
+from outloud.extractor import (
+    clean_markdown_for_tts,
+    extract_from_pdf,
+    extract_title_from_text,
+    save_text,
+)
+
+
+def test_extract_from_pdf():
+    r = runfiles.Create()
+    pdf_path = r.Rlocation("_main/outloud/extractor/testdata/bazel.pdf")
+
+    title, text = extract_from_pdf(pdf_path)
+
+    assert title
+    assert len(text) > 50
+    assert "bazel" in text.lower()
+
 
 def test_clean_markdown_for_tts():
-    from outloud.extractor import clean_markdown_for_tts
-
     markdown = """# Title
 
 This is a paragraph with a [link](http://example.com).
@@ -37,8 +57,6 @@ Figure 1: A caption to remove.
 
 
 def test_extract_title_from_text():
-    from outloud.extractor import extract_title_from_text
-
     text = """
 Short.
 
@@ -51,19 +69,19 @@ More content here.
 
 
 def test_extract_title_from_text_with_markdown():
-    from outloud.extractor import extract_title_from_text
-
     text = "## The Article Title\n\nSome content."
     title = extract_title_from_text(text)
     assert title == "The Article Title"
 
 
 def test_save_text():
-    from outloud.extractor import save_text
-
     with tempfile.TemporaryDirectory() as tmpdir:
         output_path = Path(tmpdir) / "subdir" / "test.txt"
         result = save_text("Hello World", str(output_path))
 
         assert Path(result).exists()
         assert Path(result).read_text() == "Hello World"
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main([__file__] + sys.argv[1:]))

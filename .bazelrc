@@ -1,9 +1,7 @@
 build --@rules_python//python/config_settings:python_version=3.11
 common --lockfile_mode=update
-common --remote_cache_compression
 test --test_output=errors
 
 common:ci --lockfile_mode=error
-common:ci --announce_rc
 
 try-import %workspace%/user.bazelrc
