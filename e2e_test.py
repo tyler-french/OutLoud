@@ -9,7 +9,7 @@ os.environ["OUTLOUD_DATA_DIR"] = _test_data_dir
 import pytest  # noqa: E402
 
 from app import app  # noqa: E402
-from tts import (  # noqa: E402
+from outloud.tts import (  # noqa: E402
     generate_audio,
     generate_audio_chunked,
     generate_preview,
@@ -100,9 +100,9 @@ class TestTTS:
 
         assert isinstance(mp3_bytes, bytes), "Should return bytes"
         assert len(mp3_bytes) > 1000, "Preview should have substantial content"
-        assert (
-            mp3_bytes[:3] == b"ID3" or mp3_bytes[:2] == b"\xff\xfb"
-        ), "Should be valid MP3"
+        assert mp3_bytes[:3] == b"ID3" or mp3_bytes[:2] == b"\xff\xfb", (
+            "Should be valid MP3"
+        )
 
 
 class TestPreviewEndpoint:

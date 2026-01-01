@@ -58,7 +58,6 @@ def extract_from_pdf(pdf_path: str) -> tuple[str, str]:
 
 
 def clean_markdown_for_tts(text: str) -> str:
-    """Clean markdown text for TTS reading."""
     # Remove HTML tags and spans
     text = re.sub(r"<[^>]+>", "", text)
 

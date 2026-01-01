@@ -49,11 +49,11 @@ def cleanup_text(text: str, model: str = DEFAULT_MODEL) -> str:
             "prompt": CLEANUP_PROMPT + text,
             "stream": False,
             "options": {
-                "temperature": 0.1,  # Low temperature for consistent output
-                "num_predict": len(text) + 500,  # Allow enough tokens
+                "temperature": 0.1,
+                "num_predict": len(text) + 500,
             },
         },
-        timeout=300,  # 5 minute timeout for long texts
+        timeout=300,
     )
 
     if response.status_code != 200:

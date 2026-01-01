@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import datetime
 
-from config import DB_PATH
+from outloud.config import DB_PATH
 
 
 def get_connection():
@@ -63,8 +63,6 @@ def _migrate_db(conn):
                 raise ValueError(f"Invalid column type: {col_type}")
             conn.execute(f"ALTER TABLE articles ADD COLUMN {col_name} {col_type}")
 
-    # Migrate existing articles: if they have txt_path and status='ready',
-    # set processing_stage='ready' and copy txt_path to raw/cleaned paths
     conn.execute("""
         UPDATE articles
         SET processing_stage = 'ready',
@@ -75,7 +73,6 @@ def _migrate_db(conn):
           AND txt_path IS NOT NULL
     """)
 
-    # Mark completed articles
     conn.execute("""
         UPDATE articles
         SET processing_stage = 'completed'
@@ -83,7 +80,6 @@ def _migrate_db(conn):
           AND processing_stage IS NULL
     """)
 
-    # Reset articles stuck in intermediate stages (e.g., after crash/restart)
     conn.execute("""
         UPDATE articles
         SET processing_stage = 'queued'
@@ -242,7 +238,7 @@ def reset_article_for_reprocessing(article_id: int):
 
 
 def reset_article_for_cleaning(article_id: int):
-    """Reset article to run cleaning stage (keeps raw text, regenerates cleaned + audio)."""
+    """Reset article to run cleaning stage."""
     conn = get_connection()
     conn.execute(
         """UPDATE articles

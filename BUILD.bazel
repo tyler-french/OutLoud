@@ -1,5 +1,9 @@
+load("@bazel_gazelle//:def.bzl", "gazelle", "gazelle_binary")
+load("@pypi//:requirements.bzl", "all_whl_requirements")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
+load("@rules_python_gazelle_plugin//manifest:defs.bzl", "gazelle_python_manifest")
+load("@rules_python_gazelle_plugin//modules_mapping:def.bzl", "modules_mapping")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -7,14 +11,44 @@ exports_files(["requirements.lock"])
 
 compile_pip_requirements(
     name = "requirements",
+    timeout = "long",
     src = "requirements.txt",
-    requirements_txt = "requirements.lock",
     extra_args = [
         "--allow-unsafe",
         "--resolver=backtracking",
     ],
+    requirements_txt = "requirements.lock",
     tags = ["manual"],
-    timeout = "long",
+)
+
+gazelle_binary(
+    name = "gazelle_binary",
+    tags = ["manual"],
+    languages = ["@rules_python_gazelle_plugin//python"],
+)
+
+modules_mapping(
+    name = "modules_map",
+    tags = ["manual"],
+    wheels = all_whl_requirements,
+)
+
+gazelle_python_manifest(
+    name = "gazelle_python_manifest",
+    modules_mapping = "//:modules_map",
+    pip_repository_name = "pypi",
+    requirements = "//:requirements.lock",
+    tags = ["manual"],
+)
+
+# gazelle:python_root
+# gazelle:exclude e2e_test.py
+# gazelle:resolve py python.runfiles @rules_python//python/runfiles
+# gazelle:resolve py python.runfiles.runfiles @rules_python//python/runfiles
+gazelle(
+    name = "gazelle",
+    tags = ["manual"],
+    gazelle = ":gazelle_binary",
 )
 
 filegroup(
@@ -25,40 +59,23 @@ filegroup(
     }),
 )
 
-py_library(
-    name = "lib",
-    srcs = [
-        "cleaner.py",
-        "config.py",
-        "db.py",
-        "extractor.py",
-        "tts.py",
-        "worker.py",
-    ],
-    data = [":espeak_data"],
-    deps = [
-        "@pypi//flask",
-        "@pypi//kokoro_onnx",
-        "@pypi//marker_pdf",
-        "@pypi//numpy",
-        "@pypi//pydub",
-        "@pypi//soundfile",
-        "@pypi//trafilatura",
-        "@rules_python//python/runfiles",
-    ],
-)
-
 py_binary(
     name = "app",
     srcs = ["app.py"],
     data = [
+        ":espeak_data",
         ":model_files",
         ":static_files",
         ":templates",
     ],
+    visibility = ["//:__subpackages__"],
     deps = [
-        ":lib",
+        "//outloud/config",
+        "//outloud/db",
+        "//outloud/tts",
+        "//outloud/worker",
         "@pypi//flask",
+        "@pypi//werkzeug",
     ],
 )
 
@@ -66,10 +83,14 @@ py_binary(
     name = "cli",
     srcs = ["cli.py"],
     data = [
+        ":espeak_data",
         ":model_files",
     ],
+    visibility = ["//:__subpackages__"],
     deps = [
-        ":lib",
+        "//outloud/cleaner",
+        "//outloud/extractor",
+        "//outloud/tts",
     ],
 )
 
@@ -101,8 +122,10 @@ filegroup(
 
 py_test(
     name = "e2e_test",
-    srcs = ["e2e_test.py", "app.py"],
-    main = "e2e_test.py",
+    srcs = [
+        "app.py",
+        "e2e_test.py",
+    ],
     args = ["-v"],
     data = [
         "bazel.pdf",
@@ -111,10 +134,32 @@ py_test(
         ":static_files",
         ":templates",
     ],
+    main = "e2e_test.py",
     deps = [
-        ":lib",
+        "//outloud/config",
+        "//outloud/db",
+        "//outloud/tts",
+        "//outloud/worker",
         "@pypi//flask",
         "@pypi//pytest",
-        "@rules_python//python/runfiles",
+    ],
+)
+
+py_library(
+    name = "outloud_lib",
+    srcs = [
+        "app.py",
+        "cli.py",
+    ],
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//outloud/cleaner",
+        "//outloud/config",
+        "//outloud/db",
+        "//outloud/extractor",
+        "//outloud/tts",
+        "//outloud/worker",
+        "@pypi//flask",
+        "@pypi//werkzeug",
     ],
 )
