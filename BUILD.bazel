@@ -23,11 +23,13 @@ compile_pip_requirements(
 
 gazelle_binary(
     name = "gazelle_binary",
+    tags = ["manual"],
     languages = ["@rules_python_gazelle_plugin//python"],
 )
 
 modules_mapping(
     name = "modules_map",
+    tags = ["manual"],
     wheels = all_whl_requirements,
 )
 
@@ -36,6 +38,7 @@ gazelle_python_manifest(
     modules_mapping = "//:modules_map",
     pip_repository_name = "pypi",
     requirements = "//:requirements.lock",
+    tags = ["manual"],
 )
 
 # gazelle:python_root
@@ -44,6 +47,7 @@ gazelle_python_manifest(
 # gazelle:resolve py python.runfiles.runfiles @rules_python//python/runfiles
 gazelle(
     name = "gazelle",
+    tags = ["manual"],
     gazelle = ":gazelle_binary",
 )
 
@@ -142,7 +146,7 @@ py_test(
 )
 
 py_library(
-    name = "OutLoud",
+    name = "outloud_lib",
     srcs = [
         "app.py",
         "cli.py",

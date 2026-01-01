@@ -95,6 +95,16 @@ manifest:
     nodeenv: nodeenv
     numpy: numpy
     nvidia: nvidia_nvtx_cu12
+    nvidia.cublas: nvidia_cublas_cu12
+    nvidia.cuda_cupti: nvidia_cuda_cupti_cu12
+    nvidia.cuda_nvrtc: nvidia_cuda_nvrtc_cu12
+    nvidia.cuda_runtime: nvidia_cuda_runtime_cu12
+    nvidia.cufft: nvidia_cufft_cu12
+    nvidia.cufile: nvidia_cufile_cu12
+    nvidia.curand: nvidia_curand_cu12
+    nvidia.cusolver: nvidia_cusolver_cu12
+    nvidia.cusparse: nvidia_cusparse_cu12
+    nvidia.nvjitlink: nvidia_nvjitlink_cu12
     onnxruntime: onnxruntime
     openai: openai
     opencv_python_headless.libs.libopenblas-r0-f650aae0: opencv_python_headless
@@ -168,4 +178,4 @@ manifest:
     yaml: pyyaml
   pip_repository:
     name: pypi
-integrity: 181d164b2866cc247fbbe181a7d1a548198b1267ceb388d6258df942ea8cf2cc
+integrity: 7818d4ce8e529079978c208118e72462a3cb9ba840037dc76f66d09b2e79683d

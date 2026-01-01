@@ -4,21 +4,21 @@ module(
 )
 
 bazel_dep(name = "platforms", version = "1.0.0")
-bazel_dep(name = "rules_python", version = "1.8.0-rc1")
-bazel_dep(name = "rules_python_gazelle_plugin", version = "1.8.0-rc1")
+bazel_dep(name = "rules_python", version = "1.6.3")
+bazel_dep(name = "rules_python_gazelle_plugin", version = "1.6.3")
 bazel_dep(name = "gazelle", version = "0.47.0", repo_name = "bazel_gazelle")
 bazel_dep(name = "bazel_linux_packages", version = "0.2.1")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 python.toolchain(
     is_default = True,
-    python_version = "3.12",
+    python_version = "3.11",
 )
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 pip.parse(
     hub_name = "pypi",
-    python_version = "3.12",
+    python_version = "3.11",
     requirements_lock = "//:requirements.lock",
     experimental_requirement_cycles = {
         "lxml": ["lxml", "lxml-html-clean"],
@@ -54,7 +54,7 @@ http_archive(
 
 http_archive(
     name = "ruff_macos_aarch64",
-    url = "https://github.com/astral-sh/ruff/releases/download/0.8.6/ruff-aarch64-apple-darwin.tar.gz",
+    url = "https://github.com/astral-sh/ruff/releases/download/0.14.10/ruff-aarch64-apple-darwin.tar.gz",
     sha256 = "dd0f3ec914604d802658ae0d271ff9d767c117d1702a44222170dd2ffbad8d2c",
     strip_prefix = "ruff-aarch64-apple-darwin",
     build_file_content = 'exports_files(["ruff"])',
