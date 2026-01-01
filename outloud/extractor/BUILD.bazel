@@ -16,5 +16,13 @@ py_library(
 py_test(
     name = "extractor_test",
     srcs = ["extractor_test.py"],
-    deps = [":extractor"],
+    main = "extractor_test.py",
+    args = ["-v"],
+    size = "enormous",
+    data = ["testdata/bazel.pdf"],
+    deps = [
+        ":extractor",
+        "@pypi//pytest",
+        "@rules_python//python/runfiles",
+    ],
 )
