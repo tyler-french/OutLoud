@@ -105,20 +105,7 @@ def get_kokoro() -> Kokoro:
 
 
 def split_into_chunks(text: str, max_chars: int = 350) -> list[str]:
-    """Split text into chunks that are conservative for the TTS phoneme limit.
-
-    The TTS stack (Kokoro + espeak-ng) has an approximate upper bound of ~510
-    phonemes per request. Because there is no simple, language-agnostic mapping
-    from characters to phonemes, we use a character-count heuristic instead.
-
-    The default ``max_chars=350`` balances safety with performance - it stays
-    well under the phoneme limit for typical English text while avoiding
-    excessive chunking. The retry logic in ``_generate_chunk_audio`` handles
-    edge cases where chunks exceed the phoneme limit by splitting further.
-
-    Callers may pass a smaller value for more conservative chunking, or a
-    larger value if they've profiled their workload and want fewer chunks.
-    """
+    """Split text into chunks that are conservative for the TTS phoneme limit."""
     abbreviations = r"(?<!\bMr)(?<!\bMrs)(?<!\bDr)(?<!\bMs)(?<!\bProf)(?<!\bSr)(?<!\bJr)(?<!\bvs)(?<!\betc)(?<!\be\.g)(?<!\bi\.e)(?<!\bNo)(?<!\bSt)"
     pattern = abbreviations + r'(?<=[.!?])\s+(?=[A-Z"\']|$)'
     sentences = [s.strip() for s in re.split(pattern, text) if s.strip()]

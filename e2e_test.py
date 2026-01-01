@@ -9,7 +9,7 @@ os.environ["OUTLOUD_DATA_DIR"] = _test_data_dir
 import pytest  # noqa: E402
 
 from app import app  # noqa: E402
-from tts import (  # noqa: E402
+from outloud.tts import (  # noqa: E402
     generate_audio,
     generate_audio_chunked,
     generate_preview,

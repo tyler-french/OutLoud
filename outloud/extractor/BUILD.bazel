@@ -1,0 +1,20 @@
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
+
+py_library(
+    name = "extractor",
+    srcs = [
+        "__init__.py",
+        "extractor.py",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@pypi//marker_pdf",
+        "@pypi//trafilatura",
+    ],
+)
+
+py_test(
+    name = "extractor_test",
+    srcs = ["extractor_test.py"],
+    deps = [":extractor"],
+)

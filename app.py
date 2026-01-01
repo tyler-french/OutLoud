@@ -5,10 +5,8 @@ from urllib.parse import urlparse
 from flask import Flask, render_template, request, jsonify, send_file, Response
 from werkzeug.utils import secure_filename
 
-import db
-import tts
-import worker
-from config import TEXTS_DIR, AUDIO_DIR, UPLOAD_DIR
+from outloud import db, tts, worker
+from outloud.config import TEXTS_DIR, AUDIO_DIR, UPLOAD_DIR
 
 
 def compute_file_hash(file_storage) -> str:

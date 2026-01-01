@@ -1,0 +1,16 @@
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
+
+py_library(
+    name = "config",
+    srcs = [
+        "__init__.py",
+        "config.py",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "config_test",
+    srcs = ["config_test.py"],
+    deps = [":config"],
+)

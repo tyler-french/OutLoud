@@ -3,9 +3,7 @@ import sys
 import time
 from pathlib import Path
 
-import cleaner
-import extractor
-import tts
+from outloud import cleaner, extractor, tts
 
 
 def log(msg: str):

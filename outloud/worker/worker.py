@@ -4,11 +4,8 @@ import logging
 import threading
 import uuid
 
-import db
-import extractor
-import cleaner
-import tts
-from config import TEXTS_DIR, AUDIO_DIR, UPLOAD_DIR
+from outloud import db, extractor, cleaner, tts
+from outloud.config import TEXTS_DIR, AUDIO_DIR, UPLOAD_DIR
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

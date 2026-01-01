@@ -1,0 +1,25 @@
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
+
+py_library(
+    name = "tts",
+    srcs = [
+        "__init__.py",
+        "tts.py",
+    ],
+    data = ["//:espeak_data"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@pypi//kokoro_onnx",
+        "@pypi//numpy",
+        "@pypi//pydub",
+        "@pypi//soundfile",
+        "@rules_python//python/runfiles",
+    ],
+)
+
+py_test(
+    name = "tts_test",
+    srcs = ["tts_test.py"],
+    data = ["//:model_files"],
+    deps = [":tts"],
+)

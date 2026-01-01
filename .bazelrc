@@ -1,4 +1,4 @@
-build --@rules_python//python/config_settings:python_version=3.11
+build --@rules_python//python/config_settings:python_version=3.12
 common --lockfile_mode=update
 test --test_output=errors
 try-import %workspace%/user.bazelrc

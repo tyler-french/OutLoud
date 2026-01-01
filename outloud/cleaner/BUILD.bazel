@@ -1,0 +1,20 @@
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
+
+py_library(
+    name = "cleaner",
+    srcs = [
+        "__init__.py",
+        "cleaner.py",
+    ],
+    visibility = ["//visibility:public"],
+    deps = ["@pypi//requests"],
+)
+
+py_test(
+    name = "cleaner_test",
+    srcs = ["cleaner_test.py"],
+    deps = [
+        ":cleaner",
+        "@pypi//pytest",
+    ],
+)
