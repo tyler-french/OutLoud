@@ -19,7 +19,7 @@ py_test(
     main = "extractor_test.py",
     args = ["-v"],
     size = "large",
-    tags = ["no-ci"],
+    tags = ["no-ci", "no-remote-exec"],
     data = ["testdata/sample.pdf"],
     deps = [
         ":extractor",
