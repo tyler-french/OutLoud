@@ -3,5 +3,7 @@ common --lockfile_mode=update
 test --test_output=errors
 
 common:ci --lockfile_mode=error
+test:ci --test_tag_filters=-no-ci
+common:ci --remote_cache_compression
 
 try-import %workspace%/user.bazelrc

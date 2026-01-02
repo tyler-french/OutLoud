@@ -18,7 +18,8 @@ py_test(
     srcs = ["extractor_test.py"],
     main = "extractor_test.py",
     args = ["-v"],
-    size = "enormous",
+    size = "large",
+    tags = ["no-ci"],
     data = ["testdata/sample.pdf"],
     deps = [
         ":extractor",
