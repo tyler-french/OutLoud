@@ -1,0 +1,17 @@
+actions:
+  - name: "Test all targets"
+    container_image: ubuntu-22.04
+    triggers:
+      push:
+        branches:
+          - "main"
+      pull_request:
+        branches:
+          - "*"
+    resource_requests:
+      disk: "40GB"
+    steps:
+      - run: "bazel run //:ruff -- check ."
+      - run: "bazel run //:ruff -- format --check ."
+      - run: "sudo apt-get update && sudo apt-get install -y ffmpeg libsndfile1"
+      - run: "bazel test --config=ci //..."
