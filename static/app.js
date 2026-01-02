@@ -16,8 +16,16 @@ const textTitle = document.getElementById('text-title');
 const textInput = document.getElementById('text-input');
 const textCancel = document.getElementById('text-cancel');
 const textSubmit = document.getElementById('text-submit');
+const readerModal = document.getElementById('reader-modal');
+const readerTitle = document.getElementById('reader-title');
+const closeReader = document.getElementById('close-reader');
+const currentSentenceEl = document.getElementById('current-sentence');
+const sentenceContext = document.getElementById('sentence-context');
+const readerAudio = document.getElementById('reader-audio');
 
 let previewAudio = null;
+let readerData = null;
+let currentSentenceIdx = 0;
 
 function escapeHtml(text) {
     const div = document.createElement('div');
@@ -32,7 +40,7 @@ const MAX_POLL_FAILURES = 5;
 function startPolling() {
     if (pollInterval) return;
     pollFailures = 0;
-    pollInterval = setInterval(pollStatus, 2000);
+    pollInterval = setInterval(pollStatus, 1000);
 }
 
 function stopPolling() {
@@ -88,12 +96,17 @@ function updateItemInList(article) {
     }
 
     const currentStage = item.dataset.stage;
-    if (currentStage === article.processing_stage) {
+    const currentProgress = item.dataset.progress;
+    const stageChanged = currentStage !== article.processing_stage;
+    const progressChanged = currentProgress !== (article.progress || '');
+
+    if (!stageChanged && !progressChanged) {
         return;
     }
 
     item.dataset.stage = article.processing_stage || 'ready';
     item.dataset.status = article.status;
+    item.dataset.progress = article.progress || '';
 
     item.classList.toggle('done', article.status === 'completed');
     item.classList.toggle('error', article.processing_stage === 'error');
@@ -101,8 +114,8 @@ function updateItemInList(article) {
     const stageEl = item.querySelector('.item-stage');
     if (stageEl) {
         let stageText = article.processing_stage || 'ready';
-        if (article.progress && article.processing_stage === 'generating') {
-            stageText = `generating (${article.progress})`;
+        if (article.progress && ['generating', 'cleaning', 'extracting'].includes(article.processing_stage)) {
+            stageText = `${article.processing_stage} (${article.progress})`;
         }
         stageEl.textContent = stageText;
         stageEl.className = `item-stage stage-${article.processing_stage || 'ready'}`;
@@ -288,6 +301,11 @@ function addItemToList(article) {
     }
 
     const stage = article.processing_stage || 'ready';
+    let stageText = stage;
+    if (article.progress && ['generating', 'cleaning', 'extracting'].includes(stage)) {
+        stageText = `${stage} (${article.progress})`;
+    }
+
     const div = document.createElement('div');
     div.className = 'item';
     if (article.status === 'completed') div.classList.add('done');
@@ -296,11 +314,12 @@ function addItemToList(article) {
     div.dataset.id = article.id;
     div.dataset.status = article.status;
     div.dataset.stage = stage;
+    div.dataset.progress = article.progress || '';
 
     div.innerHTML = `
         <div class="item-info">
             <span class="item-title">${escapeHtml(article.title)}</span>
-            <span class="item-stage stage-${escapeHtml(stage)}">${escapeHtml(stage)}</span>
+            <span class="item-stage stage-${escapeHtml(stage)}">${escapeHtml(stageText)}</span>
             ${article.error ? `<span class="item-error" title="${escapeHtml(article.error)}">${escapeHtml(article.error.substring(0, 30))}...</span>` : ''}
         </div>
         <div class="item-controls"></div>
@@ -314,10 +333,80 @@ async function playItem(id) {
     const response = await fetch(`/article/${id}`);
     const article = await response.json();
 
+    try {
+        const timestampsResponse = await fetch(`/timestamps/${id}`);
+        if (timestampsResponse.ok) {
+            const sentences = await timestampsResponse.json();
+            if (sentences && sentences.length > 0) {
+                await openReader(article, sentences);
+                return;
+            }
+        }
+    } catch (e) {
+        console.log('Timestamps not available, using simple player');
+    }
+
     currentTitle.textContent = article.title;
     audioPlayer.src = `/audio/${id}`;
     playerBar.classList.remove('hidden');
     audioPlayer.play();
+}
+
+async function openReader(article, sentences) {
+    readerData = { article, sentences };
+    currentSentenceIdx = 0;
+
+    readerTitle.textContent = article.title;
+    readerAudio.src = `/audio/${article.id}`;
+    readerModal.classList.remove('hidden');
+
+    renderSentence(0);
+    readerAudio.addEventListener('timeupdate', handleReaderTimeUpdate);
+    readerAudio.play();
+}
+
+function renderSentence(idx) {
+    currentSentenceIdx = idx;
+    const sentence = readerData.sentences[idx];
+    currentSentenceEl.textContent = sentence ? sentence.text : '';
+
+    const nextSentences = [];
+    for (let i = idx + 1; i < Math.min(idx + 4, readerData.sentences.length); i++) {
+        if (readerData.sentences[i] && readerData.sentences[i].text) {
+            nextSentences.push(readerData.sentences[i].text);
+        }
+    }
+    sentenceContext.textContent = nextSentences.join(' ');
+}
+
+function handleReaderTimeUpdate() {
+    const currentTime = readerAudio.currentTime;
+    const sentence = readerData.sentences[currentSentenceIdx];
+
+    if (!sentence || !sentence.words || sentence.words.length === 0) {
+        if (currentSentenceIdx < readerData.sentences.length - 1) {
+            const nextSentence = readerData.sentences[currentSentenceIdx + 1];
+            if (nextSentence && nextSentence.words && nextSentence.words.length > 0) {
+                if (currentTime >= nextSentence.words[0].start) {
+                    renderSentence(currentSentenceIdx + 1);
+                }
+            }
+        }
+        return;
+    }
+
+    const lastWord = sentence.words[sentence.words.length - 1];
+    if (currentTime > lastWord.end && currentSentenceIdx < readerData.sentences.length - 1) {
+        renderSentence(currentSentenceIdx + 1);
+    }
+}
+
+function closeReaderModal() {
+    readerAudio.pause();
+    readerAudio.removeEventListener('timeupdate', handleReaderTimeUpdate);
+    readerModal.classList.add('hidden');
+    readerData = null;
+    currentSentenceIdx = 0;
 }
 
 async function markDone(id) {
@@ -402,6 +491,8 @@ closePlayer.addEventListener('click', () => {
     audioPlayer.pause();
     playerBar.classList.add('hidden');
 });
+
+closeReader.addEventListener('click', closeReaderModal);
 
 previewBtn.addEventListener('click', () => {
     const voice = voiceSelect.value;

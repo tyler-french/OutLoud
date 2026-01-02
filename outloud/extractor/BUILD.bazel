@@ -19,7 +19,7 @@ py_test(
     main = "extractor_test.py",
     args = ["-v"],
     size = "enormous",
-    data = ["testdata/bazel.pdf"],
+    data = ["testdata/sample.pdf"],
     deps = [
         ":extractor",
         "@pypi//pytest",

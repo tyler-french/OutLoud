@@ -12,6 +12,10 @@ bazel run //:ruff -- check .      # Lint
 bazel run //:ruff -- format .     # Format
 ```
 
+- Do not wrap commands in `timeout`. Let me cancel if needed.
+- Do not prefix commands with environment variables. If you need to set env vars, use `export` in a separate command or tell me to set them.
+- Run bazel commands directly, e.g. `bazel test //:app` not `timeout 60 bazel test //:app`
+
 ## Dependencies
 
 - macOS: `brew install ffmpeg libsndfile`

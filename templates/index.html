@@ -91,6 +91,20 @@
             <audio id="audio-player" controls></audio>
             <button id="close-player">X</button>
         </div>
+
+        <div id="reader-modal" class="reader-modal hidden">
+            <div class="reader-header">
+                <h2 id="reader-title">-</h2>
+                <button id="close-reader">X</button>
+            </div>
+            <div class="reader-content">
+                <div id="current-sentence" class="current-sentence"></div>
+                <div id="sentence-context" class="sentence-context"></div>
+            </div>
+            <div class="reader-controls">
+                <audio id="reader-audio" controls></audio>
+            </div>
+        </div>
     </main>
 
     <script src="{{ url_for('static', filename='app.js') }}"></script>

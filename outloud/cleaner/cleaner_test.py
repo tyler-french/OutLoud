@@ -1,34 +1,29 @@
 from unittest.mock import patch
 
+import pytest
+
+from outloud.cleaner import cleanup_text, cleanup_text_chunked, is_ollama_running
+
 
 def test_is_ollama_running_true():
-    from outloud.cleaner import is_ollama_running
-
     with patch("outloud.cleaner.requests.get") as mock_get:
         mock_get.return_value.status_code = 200
         assert is_ollama_running() is True
 
 
 def test_is_ollama_running_false():
-    from outloud.cleaner import is_ollama_running
-
     with patch("outloud.cleaner.requests.get") as mock_get:
         mock_get.side_effect = Exception("Connection refused")
         assert is_ollama_running() is False
 
 
 def test_cleanup_text_ollama_not_running():
-    from outloud.cleaner import cleanup_text
-    import pytest
-
     with patch("outloud.cleaner.is_ollama_running", return_value=False):
         with pytest.raises(RuntimeError, match="Ollama is not running"):
             cleanup_text("test text")
 
 
 def test_cleanup_text_success():
-    from outloud.cleaner import cleanup_text
-
     with patch("outloud.cleaner.is_ollama_running", return_value=True):
         with patch("outloud.cleaner.requests.post") as mock_post:
             mock_post.return_value.status_code = 200
@@ -39,8 +34,6 @@ def test_cleanup_text_success():
 
 
 def test_cleanup_text_chunked():
-    from outloud.cleaner import cleanup_text_chunked
-
     long_text = "Paragraph one.\n\nParagraph two.\n\nParagraph three."
     progress_calls = []
 

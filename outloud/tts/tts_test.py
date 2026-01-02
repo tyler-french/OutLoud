@@ -1,6 +1,7 @@
-def test_split_into_chunks_short_text():
-    from outloud.tts import split_into_chunks
+from outloud.tts import get_available_voices, split_into_chunks
 
+
+def test_split_into_chunks_short_text():
     text = "Hello world. This is a test."
     chunks = split_into_chunks(text)
     assert len(chunks) == 1
@@ -8,8 +9,6 @@ def test_split_into_chunks_short_text():
 
 
 def test_split_into_chunks_long_text():
-    from outloud.tts import split_into_chunks
-
     text = "This is sentence one. " * 50
     chunks = split_into_chunks(text, max_chars=100)
     assert len(chunks) > 1
@@ -18,8 +17,6 @@ def test_split_into_chunks_long_text():
 
 
 def test_split_into_chunks_respects_sentence_boundaries():
-    from outloud.tts import split_into_chunks
-
     text = "First sentence here. Second sentence here. Third sentence here."
     chunks = split_into_chunks(text, max_chars=50)
 
@@ -29,16 +26,12 @@ def test_split_into_chunks_respects_sentence_boundaries():
 
 
 def test_split_into_chunks_handles_abbreviations():
-    from outloud.tts import split_into_chunks
-
     text = "Dr. Smith went to the store. Mr. Jones followed."
     chunks = split_into_chunks(text, max_chars=1000)
     assert len(chunks) == 1
 
 
 def test_get_available_voices():
-    from outloud.tts import get_available_voices
-
     voices = get_available_voices()
 
     assert len(voices) > 0
@@ -49,8 +42,6 @@ def test_get_available_voices():
 
 
 def test_voice_ids_are_unique():
-    from outloud.tts import get_available_voices
-
     voices = get_available_voices()
     ids = [v["id"] for v in voices]
     assert len(ids) == len(set(ids))

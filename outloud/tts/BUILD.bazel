@@ -10,7 +10,9 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "@pypi//kokoro_onnx",
+        "@pypi//misaki",
         "@pypi//numpy",
+        "@pypi//onnxruntime",
         "@pypi//pydub",
         "@pypi//soundfile",
         "@rules_python//python/runfiles",
@@ -20,6 +22,25 @@ py_library(
 py_test(
     name = "tts_test",
     srcs = ["tts_test.py"],
+    args = ["-v"],
     data = ["//:model_files"],
-    deps = [":tts"],
+    deps = [
+        ":tts",
+        "@pypi//pytest",
+    ],
+)
+
+py_test(
+    name = "debug_test",
+    srcs = ["debug_test.py"],
+    args = ["-v"],
+    data = [
+        "@kokoro_model//file",
+        "@kokoro_model_timestamped//file",
+    ],
+    deps = [
+        "@pypi//onnxruntime",
+        "@pypi//pytest",
+        "@rules_python//python/runfiles",
+    ],
 )

@@ -9,7 +9,7 @@ from marker.models import create_model_dict
 _marker_converter = None
 
 
-def get_marker_converter():
+def _get_marker_converter():
     global _marker_converter
     if _marker_converter is None:
         _marker_converter = PdfConverter(artifact_dict=create_model_dict())
@@ -41,12 +41,12 @@ def extract_from_pdf(pdf_path: str) -> tuple[str, str]:
     if not path.exists():
         raise FileNotFoundError(f"PDF not found: {pdf_path}")
 
-    converter = get_marker_converter()
+    converter = _get_marker_converter()
     rendered = converter(str(path))
 
     text = rendered.markdown
 
-    if not text or len(text.strip()) < 100:
+    if not text or len(text.strip()) < 50:
         raise ValueError(f"Could not extract text from PDF: {pdf_path}")
 
     text = clean_markdown_for_tts(text)

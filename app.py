@@ -1,12 +1,20 @@
 import hashlib
-import logging
 from urllib.parse import urlparse
 
 from flask import Flask, render_template, request, jsonify, send_file, Response
 from werkzeug.utils import secure_filename
 
 from outloud import db, tts, worker
-from outloud.config import TEXTS_DIR, AUDIO_DIR, UPLOAD_DIR
+from outloud.config import (
+    TEXTS_DIR,
+    AUDIO_DIR,
+    UPLOAD_DIR,
+    TIMESTAMPS_DIR,
+    setup_logging,
+    get_logger,
+)
+
+logger = get_logger("app")
 
 
 def compute_file_hash(file_storage) -> str:
@@ -21,14 +29,6 @@ def compute_file_hash(file_storage) -> str:
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
-
-
-class StatusEndpointFilter(logging.Filter):
-    def filter(self, record):
-        return "/articles/status" not in record.getMessage()
-
-
-logging.getLogger("werkzeug").addFilter(StatusEndpointFilter())
 
 
 _valid_voices = None
@@ -339,6 +339,25 @@ def serve_audio(article_id):
     return send_file(str(mp3_path), mimetype="audio/mpeg")
 
 
+@app.route("/timestamps/<int:article_id>")
+def get_timestamps(article_id):
+    article = db.get_article(article_id)
+    if not article:
+        return jsonify({"error": "Article not found"}), 404
+
+    timestamps_path_name = article.get("timestamps_path")
+    if not timestamps_path_name:
+        return jsonify({"error": "Timestamps not available"}), 404
+
+    timestamps_path = TIMESTAMPS_DIR / timestamps_path_name
+    if not timestamps_path.exists():
+        return jsonify({"error": "Timestamps file not found"}), 404
+
+    return send_file(str(timestamps_path), mimetype="application/json")
+
+
 if __name__ == "__main__":
+    setup_logging()
+    logger.info("Starting OutLoud server")
     worker.start_worker()
     app.run(debug=True, port=5001, use_reloader=False)

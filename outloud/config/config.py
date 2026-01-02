@@ -15,8 +15,10 @@ DB_PATH = DATA_DIR / "reader.db"
 TEXTS_DIR = DATA_DIR / "texts"
 AUDIO_DIR = DATA_DIR / "audio"
 UPLOAD_DIR = DATA_DIR / "uploads"
+TIMESTAMPS_DIR = DATA_DIR / "timestamps"
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 TEXTS_DIR.mkdir(parents=True, exist_ok=True)
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+TIMESTAMPS_DIR.mkdir(parents=True, exist_ok=True)
