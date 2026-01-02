@@ -1,26 +1,26 @@
 """Background worker for processing articles."""
 
-import logging
+import hashlib
+import json
+import os
+import shutil
+import subprocess
 import threading
+import time
 import uuid
 
-from outloud import db, extractor, cleaner, tts
-from outloud.config import TEXTS_DIR, AUDIO_DIR, UPLOAD_DIR
+import requests
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from outloud import db, extractor, cleaner, tts
+from outloud.config import TEXTS_DIR, AUDIO_DIR, UPLOAD_DIR, TIMESTAMPS_DIR, get_logger
+
+logger = get_logger("worker")
 
 _worker_thread: threading.Thread | None = None
 _wake_event = threading.Event()
 
 
 def _ensure_ollama_running():
-    import os
-    import shutil
-    import subprocess
-    import time
-    import requests
-
     def is_ollama_ready():
         try:
             requests.get("http://localhost:11434/api/tags", timeout=1)
@@ -105,8 +105,6 @@ def start_worker():
 
 
 def _scan_uploads_directory():
-    import hashlib
-
     if not UPLOAD_DIR.exists():
         return
 
@@ -287,10 +285,12 @@ def _do_audio_generation(article: dict):
 
     mp3_filename = f"{content_hash}_{voice}.mp3"
     mp3_path = AUDIO_DIR / mp3_filename
+    timestamps_filename = f"{content_hash}_{voice}_timestamps.json"
+    timestamps_path = TIMESTAMPS_DIR / timestamps_filename
 
-    if mp3_path.exists():
+    if mp3_path.exists() and timestamps_path.exists():
         logger.info(f"Article {article_id} already has audio, skipping generation")
-        db.update_article_mp3(article_id, mp3_filename)
+        db.update_article_mp3(article_id, mp3_filename, timestamps_filename)
         return
 
     txt_path = TEXTS_DIR / source_txt
@@ -303,9 +303,12 @@ def _do_audio_generation(article: dict):
         progress_text = f"{current}/{total} chunks"
         db.update_article_progress(article_id, progress_text)
 
-    tts.generate_audio_chunked(
+    _, sentences = tts.generate_audio_with_timestamps(
         text, str(mp3_path), voice=voice, progress_callback=progress_callback
     )
 
-    db.update_article_mp3(article_id, mp3_filename)
-    logger.info(f"Article {article_id} audio complete")
+    with open(timestamps_path, "w", encoding="utf-8") as f:
+        json.dump(sentences, f)
+
+    db.update_article_mp3(article_id, mp3_filename, timestamps_filename)
+    logger.info(f"Article {article_id} audio complete with {len(sentences)} sentences")

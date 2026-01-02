@@ -13,6 +13,7 @@ py_library(
 py_test(
     name = "cleaner_test",
     srcs = ["cleaner_test.py"],
+    args = ["-v"],
     deps = [
         ":cleaner",
         "@pypi//pytest",

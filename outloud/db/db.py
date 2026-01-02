@@ -26,7 +26,7 @@ def init_db():
             completed_at TIMESTAMP,
             raw_txt_path TEXT,
             cleaned_txt_path TEXT,
-            voice TEXT DEFAULT 'af_heart',
+            voice TEXT DEFAULT 'am_adam',
             processing_stage TEXT DEFAULT 'queued',
             error TEXT,
             content_hash TEXT,
@@ -47,12 +47,13 @@ def _migrate_db(conn):
     migrations = [
         ("raw_txt_path", "TEXT"),
         ("cleaned_txt_path", "TEXT"),
-        ("voice", "TEXT DEFAULT 'af_heart'"),
+        ("voice", "TEXT DEFAULT 'am_adam'"),
         ("processing_stage", "TEXT DEFAULT 'queued'"),
         ("error", "TEXT"),
         ("content_hash", "TEXT"),
         ("progress", "TEXT"),
         ("was_cleaned", "INTEGER DEFAULT 0"),
+        ("timestamps_path", "TEXT"),
     ]
 
     for col_name, col_type in migrations:
@@ -94,7 +95,7 @@ def create_article(
     source_type: str,
     source_path: str,
     txt_path: str | None = None,
-    voice: str = "af_heart",
+    voice: str = "am_adam",
     content_hash: str | None = None,
 ) -> int:
     conn = get_connection()
@@ -172,6 +173,7 @@ _ARTICLE_COLUMNS = frozenset(
         "content_hash",
         "progress",
         "was_cleaned",
+        "timestamps_path",
     ]
 )
 
@@ -294,14 +296,24 @@ def get_completed_articles() -> list[dict]:
     return [dict(row) for row in rows]
 
 
-def update_article_mp3(article_id: int, mp3_path: str):
+def update_article_mp3(
+    article_id: int, mp3_path: str, timestamps_path: str | None = None
+):
     conn = get_connection()
-    conn.execute(
-        """UPDATE articles
-           SET mp3_path = ?, status = 'ready', processing_stage = 'ready'
-           WHERE id = ?""",
-        (mp3_path, article_id),
-    )
+    if timestamps_path:
+        conn.execute(
+            """UPDATE articles
+               SET mp3_path = ?, timestamps_path = ?, status = 'ready', processing_stage = 'ready'
+               WHERE id = ?""",
+            (mp3_path, timestamps_path, article_id),
+        )
+    else:
+        conn.execute(
+            """UPDATE articles
+               SET mp3_path = ?, status = 'ready', processing_stage = 'ready'
+               WHERE id = ?""",
+            (mp3_path, article_id),
+        )
     conn.commit()
     conn.close()
 

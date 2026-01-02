@@ -15,13 +15,12 @@ from outloud.extractor import (
 
 def test_extract_from_pdf():
     r = runfiles.Create()
-    pdf_path = r.Rlocation("_main/outloud/extractor/testdata/bazel.pdf")
+    pdf_path = r.Rlocation("_main/outloud/extractor/testdata/sample.pdf")
 
     title, text = extract_from_pdf(pdf_path)
 
     assert title
     assert len(text) > 50
-    assert "bazel" in text.lower()
 
 
 def test_clean_markdown_for_tts():

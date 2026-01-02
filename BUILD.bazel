@@ -116,6 +116,7 @@ filegroup(
     name = "model_files",
     srcs = [
         "@kokoro_model//file",
+        "@kokoro_model_timestamped//file",
         "@kokoro_voices//file",
     ],
 )
@@ -128,7 +129,6 @@ py_test(
     ],
     args = ["-v"],
     data = [
-        "bazel.pdf",
         ":espeak_data",
         ":model_files",
         ":static_files",
@@ -163,3 +163,4 @@ py_library(
         "@pypi//werkzeug",
     ],
 )
+
